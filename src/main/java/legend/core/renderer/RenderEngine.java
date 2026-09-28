@@ -267,6 +267,8 @@ public class RenderEngine {
   private int renderBufferIndex;
   /** Set when resizing the window so that the render buffers will be resized on the next frame */
   private boolean resizeRenderBuffers;
+  /** Tracks the precision of the currently allocated scene colour targets. */
+  private boolean renderBuffersUseHdr;
 
   // Plain quads
   public final Map<Translucency, Obj> plainQuads = new EnumMap<>(Translucency.class);
@@ -591,6 +593,12 @@ public class RenderEngine {
         while((task = this.tasks.poll()) != null) {
           task.run();
         }
+      }
+
+      final boolean shouldUseHdrRenderBuffers = CONFIG.getConfig(VISUAL_REMASTER_CONFIG.get());
+      if(this.renderBuffersUseHdr != shouldUseHdrRenderBuffers) {
+        this.renderBuffersUseHdr = shouldUseHdrRenderBuffers;
+        this.resizeRenderBuffers = true;
       }
 
       if(this.resizeRenderBuffers) {
@@ -1294,9 +1302,9 @@ public class RenderEngine {
 
       this.renderTextures[i] = Texture.create("Render buffer " + i, builder -> {
         builder.size(this.renderWidth, this.renderHeight);
-        builder.internalFormat(TextureInternalFormat.RGBA_8);
+        builder.internalFormat(this.renderBuffersUseHdr ? TextureInternalFormat.RGBA_16_FLOAT : TextureInternalFormat.RGBA_8);
         builder.dataFormat(TextureDataFormat.RGBA);
-        builder.dataType(TextureDataType.UBYTE);
+        builder.dataType(this.renderBuffersUseHdr ? TextureDataType.FLOAT : TextureDataType.UBYTE);
         builder.minFilter(true);
       });
       this.renderTextures[i].persistent = true;
