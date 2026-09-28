@@ -42,6 +42,7 @@ import static org.lwjgl.opengles.GLES30.GL_R32UI;
 import static org.lwjgl.opengles.GLES30.GL_RED_INTEGER;
 import static org.lwjgl.opengles.GLES30.GL_RGB8;
 import static org.lwjgl.opengles.GLES30.GL_RGBA8;
+import static org.lwjgl.opengles.GLES30.GL_RGBA16F;
 import static org.lwjgl.opengles.GLES32.glObjectLabel;
 import static org.lwjgl.system.MemoryUtil.memAddress;
 
@@ -97,6 +98,7 @@ public final class GlesTexture extends Texture {
     final int internalFormatVal = switch(internalFormat) {
       case RGB_8 -> GL_RGB8;
       case RGBA_8 -> GL_RGBA8;
+      case RGBA_16_FLOAT -> GL_RGBA16F;
       case R_32_UINT -> GL_R32UI;
       case DEPTH_COMPONENT -> GL_DEPTH_COMPONENT;
     };
