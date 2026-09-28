@@ -47,22 +47,40 @@ uniform float bloom_radius;
 uniform vec4 turn_order_bounds;
 
 
-// Conservative modern presentation pass. This intentionally operates on the current LDR
-// framebuffer; HDR/tone mapping will be introduced when the render targets are upgraded.
+// Filmic tone mapping adapted to preserve bright spell/effect energy from the
+// half-float scene target while keeping the original game's midtones readable.
+vec3 acesFilm(vec3 x) {
+  const float a = 2.51;
+  const float b = 0.03;
+  const float c = 2.43;
+  const float d = 0.59;
+  const float e = 0.14;
+  return clamp((x * (a * x + b)) / (x * (c * x + d) + e), 0.0, 1.0);
+}
+
 vec3 visualRemaster(sampler2D tex, vec2 uv) {
   vec2 texel = 1.0 / vec2(textureSize(tex, 0));
-  vec3 center = texture(tex, uv).rgb;
+
+  vec3 center = max(texture(tex, uv).rgb, vec3(0.0));
   vec3 crossBlur = (
-    texture(tex, uv + vec2(texel.x, 0.0)).rgb +
-    texture(tex, uv - vec2(texel.x, 0.0)).rgb +
-    texture(tex, uv + vec2(0.0, texel.y)).rgb +
-    texture(tex, uv - vec2(0.0, texel.y)).rgb
+    max(texture(tex, uv + vec2(texel.x, 0.0)).rgb, vec3(0.0)) +
+    max(texture(tex, uv - vec2(texel.x, 0.0)).rgb, vec3(0.0)) +
+    max(texture(tex, uv + vec2(0.0, texel.y)).rgb, vec3(0.0)) +
+    max(texture(tex, uv - vec2(0.0, texel.y)).rgb, vec3(0.0))
   ) * 0.25;
 
-  vec3 colour = center + (center - crossBlur) * 0.30;
+  // Existing game shaders were authored for a gamma-encoded framebuffer.
+  // Decode approximately before exposure/tone mapping, then encode for display.
+  vec3 colour = pow(center, vec3(2.2));
+  vec3 blurred = pow(crossBlur, vec3(2.2));
+  colour += (colour - blurred) * 0.20;
+
+  const float exposure = 0.90;
+  colour = acesFilm(max(colour * exposure, vec3(0.0)));
+  colour = pow(colour, vec3(1.0 / 2.2));
+
   float luma = dot(colour, vec3(0.2126, 0.7152, 0.0722));
-  colour = mix(vec3(luma), colour, 1.06);
-  colour = (colour - 0.5) * 1.035 + 0.5;
+  colour = mix(vec3(luma), colour, 1.04);
   return clamp(colour, 0.0, 1.0);
 }
 
