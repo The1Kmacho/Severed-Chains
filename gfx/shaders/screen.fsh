@@ -9,6 +9,7 @@ layout(location = 0) out vec4 frag;
 // screen image
 uniform sampler2D screen;
 
+uniform bool enableVisualRemaster;
 uniform bool enableCrt;
 
 uniform float time;
@@ -44,6 +45,26 @@ uniform float bloom_intensity;
 uniform float bloom_threshold;
 uniform float bloom_radius;
 uniform vec4 turn_order_bounds;
+
+
+// Conservative modern presentation pass. This intentionally operates on the current LDR
+// framebuffer; HDR/tone mapping will be introduced when the render targets are upgraded.
+vec3 visualRemaster(sampler2D tex, vec2 uv) {
+  vec2 texel = 1.0 / vec2(textureSize(tex, 0));
+  vec3 center = texture(tex, uv).rgb;
+  vec3 crossBlur = (
+    texture(tex, uv + vec2(texel.x, 0.0)).rgb +
+    texture(tex, uv - vec2(texel.x, 0.0)).rgb +
+    texture(tex, uv + vec2(0.0, texel.y)).rgb +
+    texture(tex, uv - vec2(0.0, texel.y)).rgb
+  ) * 0.25;
+
+  vec3 colour = center + (center - crossBlur) * 0.30;
+  float luma = dot(colour, vec3(0.2126, 0.7152, 0.0722));
+  colour = mix(vec3(luma), colour, 1.06);
+  colour = (colour - 0.5) * 1.035 + 0.5;
+  return clamp(colour, 0.0, 1.0);
+}
 
 // Performs bilinear filtering manually on a texture
 vec4 textureBilinear(sampler2D tex, vec2 uv) {
@@ -133,7 +154,11 @@ float vignette(vec2 uv) {
 }
 
 void main() {
-  frag = vec4(texture(screen, vertUv).rgb, 1.0f);
+  vec3 baseColour = texture(screen, vertUv).rgb;
+  if(enableVisualRemaster) {
+    baseColour = visualRemaster(screen, vertUv);
+  }
+  frag = vec4(baseColour, 1.0f);
 
   if(!enableCrt) {
     return;
