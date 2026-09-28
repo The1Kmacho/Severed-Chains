@@ -595,7 +595,7 @@ public class RenderEngine {
         }
       }
 
-      final boolean shouldUseHdrRenderBuffers = CONFIG.getConfig(VISUAL_REMASTER_CONFIG.get());
+      final boolean shouldUseHdrRenderBuffers = CONFIG.getConfig(VISUAL_REMASTER_CONFIG.get()) && !CONFIG.getConfig(SHADER_ENABLE_CRT_CONFIG.get());
       if(this.renderBuffersUseHdr != shouldUseHdrRenderBuffers) {
         this.renderBuffersUseHdr = shouldUseHdrRenderBuffers;
         this.resizeRenderBuffers = true;
