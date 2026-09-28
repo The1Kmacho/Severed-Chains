@@ -295,6 +295,7 @@ lod_core.config.language.help=Language support is a work in progress and most of
 lod_core.config.show_fps.label=Show FPS
 
 # Shader config
+lod_core.config.visual_remaster.label=Visual Remaster
 lod_core.config.shader_enable_crt.label=CRT Enabled
 lod_core.config.shader_scanlines_opacity.label=CRT: Scanline Opacity
 lod_core.config.shader_grille_opacity.label=CRT: Grille Opacity
