@@ -95,6 +95,7 @@ import static legend.game.modding.coremod.CoreMod.SHADER_SCANLINES_OPACITY_CONFI
 import static legend.game.modding.coremod.CoreMod.SHADER_STATIC_INTENSITY_CONFIG;
 import static legend.game.modding.coremod.CoreMod.SHADER_VIGNETTE_INTENSITY_CONFIG;
 import static legend.game.modding.coremod.CoreMod.SHADER_VIGNETTE_OPACITY_CONFIG;
+import static legend.game.modding.coremod.CoreMod.VISUAL_REMASTER_CONFIG;
 
 public class RenderEngine {
   private static final Logger LOGGER = LogManager.getFormatterLogger(RenderEngine.class);
@@ -223,6 +224,7 @@ public class RenderEngine {
   public static final ShaderType<ShaderOptionsScreen> SCREEN_SHADER = new ShaderType<>(
     options -> loadShader("Post", "post", "screen", options),
     shader -> {
+      final ShaderUniformInt enableVisualRemaster = shader.uniformInt("enableVisualRemaster");
       final ShaderUniformInt enableCrt = shader.uniformInt("enableCrt");
       final ShaderUniformFloat time = shader.uniformFloat("time");
       final ShaderUniformFloat scanlinesOpacity = shader.uniformFloat("scanlines_opacity");
@@ -248,7 +250,7 @@ public class RenderEngine {
       final ShaderUniformFloat bloomThreshold = shader.uniformFloat("bloom_threshold");
       final ShaderUniformFloat bloomRadius = shader.uniformFloat("bloom_radius");
       final ShaderUniformVec4 turnOrderBounds = shader.uniformVec4("turn_order_bounds");
-      return () -> new ShaderOptionsScreen(enableCrt, time, scanlinesOpacity, scanlinesWidth, grilleOpacity, resolution, pixelate, roll, rollSpeed, rollSize, rollVariation, distortIntensity, noiseOpacity, noiseSpeed, staticNoiseIntensity, aberration, brightness, discolour, warpAmount, vignetteIntensity, vignetteOpacity, bloomIntensity, bloomThreshold, bloomRadius, turnOrderBounds);
+      return () -> new ShaderOptionsScreen(enableVisualRemaster, enableCrt, time, scanlinesOpacity, scanlinesWidth, grilleOpacity, resolution, pixelate, roll, rollSpeed, rollSize, rollVariation, distortIntensity, noiseOpacity, noiseSpeed, staticNoiseIntensity, aberration, brightness, discolour, warpAmount, vignetteIntensity, vignetteOpacity, bloomIntensity, bloomThreshold, bloomRadius, turnOrderBounds);
     }
   );
 
@@ -696,6 +698,7 @@ public class RenderEngine {
         screenShader.use();
 
         final boolean enableCrt = CONFIG.getConfig(SHADER_ENABLE_CRT_CONFIG.get());
+        screenShaderOptions.enableVisualRemaster(CONFIG.getConfig(VISUAL_REMASTER_CONFIG.get()) && !enableCrt);
         screenShaderOptions.enableCrt(enableCrt);
 
         if(enableCrt) {
