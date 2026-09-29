@@ -777,7 +777,7 @@ public abstract class BattleEntity27c extends BattleObject {
         GTE.setTransforms(this.ls);
         Renderer.renderDobj2(part, true, 0);
 
-        final QueuedModelBattleTmd queue = RENDERER.queueModel(model.modelParts_00[i].tmd_08.getObj(), this.lw, QueuedModelBattleTmd.class)
+        final QueuedModelBattleTmd queue = RENDERER.queueModel(part.getRenderObj(), this.lw, QueuedModelBattleTmd.class)
           .depthOffset(model.zOffset_a0 * 4)
           .usePs1Depth(model.usePs1Depth)
           .lightDirection(lightDirectionMatrix_800c34e8)
@@ -791,7 +791,9 @@ public abstract class BattleEntity27c extends BattleObject {
           queue.scissor(this.scissor);
         }
 
-        if(combatant.texture != null) {
+        if(part.renderTextureOverride != null) {
+          queue.texture(part.renderTextureOverride, 0);
+        } else if(combatant.texture != null) {
           queue.texture(combatant.texture.vramTexture15, 1);
         }
       }
