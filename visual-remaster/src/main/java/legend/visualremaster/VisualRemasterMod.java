@@ -22,6 +22,7 @@ public final class VisualRemasterMod {
   private static final Logger LOGGER = LogManager.getFormatterLogger(VisualRemasterMod.class);
   private static final Path BACKGROUNDS = Path.of("mods", MOD_ID, "backgrounds");
   private static final Path BATTLE_MODELS = Path.of("mods", MOD_ID, "models", "battle");
+  private static Texture dartBattleAlbedo;
 
   public VisualRemasterMod() { }
 
@@ -44,7 +45,7 @@ public final class VisualRemasterMod {
       return;
     }
 
-    Texture albedo = null;
+    Texture albedo = dartBattleAlbedo;
     int replacementCount = 0;
 
     for(int partIndex = 0; partIndex < event.model.modelParts_00.length; partIndex++) {
@@ -62,6 +63,8 @@ public final class VisualRemasterMod {
             builder.wrapS(false);
             builder.wrapT(false);
           });
+          albedo.persistent = true;
+          dartBattleAlbedo = albedo;
         }
 
         final Obj replacement = ModernObjLoader.load(
@@ -94,8 +97,6 @@ public final class VisualRemasterMod {
         event.model.modelParts_00.length,
         modelDir
       );
-    } else if(albedo != null) {
-      albedo.delete();
     }
   }
 
