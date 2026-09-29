@@ -191,6 +191,27 @@ tasks.register('sourceJar', Jar) {
   archiveClassifier = "sources"
 }
 
+// Gameplay overhaul lives as a standalone mod JAR. Core changes on this branch
+// are limited to generic event hooks that the mod consumes.
+tasks.register('compileGameplayOverhaul', JavaCompile) {
+  dependsOn tasks.named('classes')
+  source = fileTree('gameplay-overhaul/src/main/java') {
+    include '**/*.java'
+  }
+  classpath = sourceSets.main.output + configurations.compileClasspath
+  destinationDirectory = layout.buildDirectory.dir('classes/java/gameplayOverhaul')
+  sourceCompatibility = JavaVersion.VERSION_25
+  targetCompatibility = JavaVersion.VERSION_25
+  options.encoding = 'UTF-8'
+}
+
+tasks.register('gameplayOverhaulJar', Jar) {
+  dependsOn tasks.named('compileGameplayOverhaul')
+  archiveFileName = 'gameplay-overhaul.jar'
+  destinationDirectory = layout.buildDirectory.dir('libs/mods')
+  from layout.buildDirectory.dir('classes/java/gameplayOverhaul')
+}
+
 tasks.register('clearOutput', Delete) {
   delete layout.buildDirectory.dir("libs/libs")
   delete layout.buildDirectory.file("libs/**")
@@ -272,6 +293,7 @@ tasks.register('copySupportFiles', Copy) {
 }
 
 jar.dependsOn(clearOutput, copyLibs, copySupportFiles, updaterJar, copyUpdaterConfig)
+jar.finalizedBy tasks.named('gameplayOverhaulJar')
 
 publishing {
   publications {
