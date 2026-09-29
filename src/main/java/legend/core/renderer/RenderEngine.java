@@ -221,9 +221,25 @@ public class RenderEngine {
     }
   );
 
+  public static final ShaderType<ShaderOptionsBloom> BLOOM_SHADER = new ShaderType<>(
+    options -> loadShader("Bloom", "post", "bloom", options),
+    shader -> {
+      shader.use();
+      shader.uniformInt("screen").set(0);
+      final ShaderUniformInt mode = shader.uniformInt("mode");
+      final ShaderUniformFloat threshold = shader.uniformFloat("threshold");
+      final ShaderUniformFloat radius = shader.uniformFloat("radius");
+      return () -> new ShaderOptionsBloom(mode, threshold, radius);
+    }
+  );
+
   public static final ShaderType<ShaderOptionsScreen> SCREEN_SHADER = new ShaderType<>(
     options -> loadShader("Post", "post", "screen", options),
     shader -> {
+      shader.use();
+      shader.uniformInt("screen").set(0);
+      final ShaderUniformInt bloomTexture = shader.uniformInt("bloom");
+      bloomTexture.set(1);
       final ShaderUniformInt enableVisualRemaster = shader.uniformInt("enableVisualRemaster");
       final ShaderUniformInt enableCrt = shader.uniformInt("enableCrt");
       final ShaderUniformFloat time = shader.uniformFloat("time");
@@ -250,7 +266,7 @@ public class RenderEngine {
       final ShaderUniformFloat bloomThreshold = shader.uniformFloat("bloom_threshold");
       final ShaderUniformFloat bloomRadius = shader.uniformFloat("bloom_radius");
       final ShaderUniformVec4 turnOrderBounds = shader.uniformVec4("turn_order_bounds");
-      return () -> new ShaderOptionsScreen(enableVisualRemaster, enableCrt, time, scanlinesOpacity, scanlinesWidth, grilleOpacity, resolution, pixelate, roll, rollSpeed, rollSize, rollVariation, distortIntensity, noiseOpacity, noiseSpeed, staticNoiseIntensity, aberration, brightness, discolour, warpAmount, vignetteIntensity, vignetteOpacity, bloomIntensity, bloomThreshold, bloomRadius, turnOrderBounds);
+      return () -> new ShaderOptionsScreen(enableVisualRemaster, bloomTexture, enableCrt, time, scanlinesOpacity, scanlinesWidth, grilleOpacity, resolution, pixelate, roll, rollSpeed, rollSize, rollVariation, distortIntensity, noiseOpacity, noiseSpeed, staticNoiseIntensity, aberration, brightness, discolour, warpAmount, vignetteIntensity, vignetteOpacity, bloomIntensity, bloomThreshold, bloomRadius, turnOrderBounds);
     }
   );
 
@@ -263,6 +279,8 @@ public class RenderEngine {
   ShaderOptionsBattleTmd battleTmdShaderOptions;
   private final FrameBuffer[] renderBuffers = new FrameBuffer[RENDER_BUFFER_COUNT];
   private final Texture[] renderTextures = new Texture[RENDER_BUFFER_COUNT];
+  private final FrameBuffer[] bloomBuffers = new FrameBuffer[2];
+  private final Texture[] bloomTextures = new Texture[2];
   private Texture depthTexture;
   private int renderBufferIndex;
   /** Set when resizing the window so that the render buffers will be resized on the next frame */
@@ -491,8 +509,11 @@ public class RenderEngine {
 
     ShaderManager.addShader(SIMPLE_SHADER);
     ShaderManager.addShader(COPY_SHADER);
+    final Shader<ShaderOptionsBloom> bloomShader = ShaderManager.addShader(BLOOM_SHADER);
+    final ShaderOptionsBloom bloomShaderOptions = bloomShader.makeOptions();
     final Shader<ShaderOptionsScreen> screenShader = ShaderManager.addShader(SCREEN_SHADER);
     final ShaderOptionsScreen screenShaderOptions = screenShader.makeOptions();
+    screenShaderOptions.bloomTexture(1);
     this.standardShader = ShaderManager.addShader(STANDARD_SHADER);
     this.standardShaderOptions = this.standardShader.makeOptions();
     this.tmdShader = ShaderManager.addShader(TMD_SHADER);
@@ -698,15 +719,50 @@ public class RenderEngine {
         this.api.disableDepthTest();
         this.api.translucency(null);
 
+        final boolean enableCrt = CONFIG.getConfig(SHADER_ENABLE_CRT_CONFIG.get());
+        final boolean enableVisualRemaster = CONFIG.getConfig(VISUAL_REMASTER_CONFIG.get()) && !enableCrt;
+        final float remasterBloomIntensity = CONFIG.getConfig(SHADER_BLOOM_INTENSITY_CONFIG.get());
+
+        if(enableVisualRemaster && remasterBloomIntensity > 0.0f) {
+          final int bloomWidth = Math.max(1, this.renderWidth / 2);
+          final int bloomHeight = Math.max(1, this.renderHeight / 2);
+
+          bloomShader.use();
+          bloomShaderOptions.threshold(CONFIG.getConfig(SHADER_BLOOM_THRESHOLD_CONFIG.get()));
+          bloomShaderOptions.radius(Math.max(0.5f, CONFIG.getConfig(SHADER_BLOOM_RADIUS_CONFIG.get()) * 0.35f));
+          this.api.viewport(0, 0, bloomWidth, bloomHeight);
+
+          // Bright-pass/downsample.
+          this.bloomBuffers[0].bind();
+          this.api.clear(true, false, false);
+          bloomShaderOptions.mode(0);
+          this.renderTextures[this.renderBufferIndex].use(0);
+          postQuad.draw();
+
+          // Two separable Gaussian blur rounds.
+          for(int i = 0; i < 2; i++) {
+            this.bloomBuffers[1].bind();
+            this.api.clear(true, false, false);
+            bloomShaderOptions.mode(1);
+            this.bloomTextures[0].use(0);
+            postQuad.draw();
+
+            this.bloomBuffers[0].bind();
+            this.api.clear(true, false, false);
+            bloomShaderOptions.mode(2);
+            this.bloomTextures[1].use(0);
+            postQuad.draw();
+          }
+        }
+
         // bind backbuffer
         this.api.unbindFramebuffer();
         this.api.clear(false, true, false);
 
         // use screen shader
         screenShader.use();
-
-        final boolean enableCrt = CONFIG.getConfig(SHADER_ENABLE_CRT_CONFIG.get());
-        screenShaderOptions.enableVisualRemaster(CONFIG.getConfig(VISUAL_REMASTER_CONFIG.get()) && !enableCrt);
+        screenShaderOptions.enableVisualRemaster(enableVisualRemaster);
+        screenShaderOptions.bloomIntensity(enableVisualRemaster ? remasterBloomIntensity : CONFIG.getConfig(SHADER_BLOOM_INTENSITY_CONFIG.get()));
         screenShaderOptions.enableCrt(enableCrt);
 
         if(enableCrt) {
@@ -791,7 +847,10 @@ public class RenderEngine {
 
         // draw final screen quad
         this.api.viewport(0, 0, this.window.getWidth(), this.window.getHeight());
-        this.renderTextures[this.renderBufferIndex].use();
+        this.renderTextures[this.renderBufferIndex].use(0);
+        if(enableVisualRemaster && remasterBloomIntensity > 0.0f) {
+          this.bloomTextures[0].use(1);
+        }
         postQuad.draw();
 
         // If we don't unbind the framebuffer textures, window resizing will crash since it has to resize the framebuffer
@@ -1333,6 +1392,33 @@ public class RenderEngine {
         builder.attachment(FrameBufferAttachmentType.COLOUR, this.renderTextures[finalI]);
         builder.attachment(FrameBufferAttachmentType.DEPTH, this.depthTexture);
       });
+    }
+
+    final int bloomWidth = Math.max(1, this.renderWidth / 2);
+    final int bloomHeight = Math.max(1, this.renderHeight / 2);
+    for(int i = 0; i < this.bloomTextures.length; i++) {
+      if(this.bloomBuffers[i] != null) {
+        this.bloomBuffers[i].delete();
+      }
+      if(this.bloomTextures[i] != null) {
+        this.bloomTextures[i].delete();
+      }
+
+      final int finalI = i;
+      this.bloomTextures[i] = Texture.create("Bloom buffer " + i, builder -> {
+        builder.size(bloomWidth, bloomHeight);
+        builder.internalFormat(TextureInternalFormat.RGBA_16_FLOAT);
+        builder.dataFormat(TextureDataFormat.RGBA);
+        builder.dataType(TextureDataType.FLOAT);
+        builder.minFilter(true);
+        builder.magFilter(true);
+        builder.wrapS(false);
+        builder.wrapT(false);
+      });
+      this.bloomTextures[i].persistent = true;
+      this.bloomBuffers[i] = FrameBuffer.create("Bloom buffer " + i, builder ->
+        builder.attachment(FrameBufferAttachmentType.COLOUR, this.bloomTextures[finalI])
+      );
     }
   }
 
