@@ -6,6 +6,7 @@ in GS_OUT {
   flat vec2 vertClut;
   flat int vertBpp;
   smooth vec4 vertColour;
+  smooth vec3 viewNormal;
   flat int vertFlags;
 
   flat int translucency;
@@ -40,6 +41,8 @@ uniform int tmdTranslucency;
 uniform int ctmdFlags;
 uniform sampler2D tex24;
 uniform usampler2D tex15;
+uniform sampler2D materialTex;
+uniform int modernMaterial;
 
 layout(location = 0) out vec4 outColour;
 
@@ -105,6 +108,28 @@ void main() {
     }
 
     outColour = clamp(outColour * texColour, 0.0, 1.0);
+
+    if(modernMaterial != 0) {
+      // Material texture: R=roughness, G=metallic, B=specular strength.
+      vec3 material = texture(materialTex, vertUv).rgb;
+      float roughness = clamp(material.r, 0.04, 1.0);
+      float metallic = clamp(material.g, 0.0, 1.0);
+      float specularStrength = clamp(material.b, 0.0, 1.0);
+
+      vec3 N = normalize(viewNormal);
+      vec3 V = vec3(0.0, 0.0, 1.0);
+      vec3 L = normalize(vec3(-0.35, 0.55, 0.76));
+      vec3 H = normalize(L + V);
+
+      float shininess = mix(96.0, 8.0, roughness);
+      float specular = pow(max(dot(N, H), 0.0), shininess) * specularStrength;
+      float fresnel = pow(1.0 - max(dot(N, V), 0.0), 5.0);
+
+      vec3 dielectricSpec = vec3(0.04);
+      vec3 specularColour = mix(dielectricSpec, texColour.rgb, metallic);
+      outColour.rgb += specularColour * (specular + fresnel * 0.15 * specularStrength);
+      outColour.rgb = clamp(outColour.rgb, 0.0, 1.0);
+    }
   } else {
     // Untextured translucent primitives don't have a translucency bit so we always discard during the appropriate discard modes
     if(discardTranslucency == 1 && translucent || discardTranslucency == 2 && !translucent) {
