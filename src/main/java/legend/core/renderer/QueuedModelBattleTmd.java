@@ -24,6 +24,7 @@ public class QueuedModelBattleTmd extends QueuedModel<ShaderOptionsBattleTmd, Qu
   boolean usePs1Depth;
 
   private int ctmdFlags;
+  private boolean modernMaterial;
   private final Vector3f battleColour = new Vector3f();
 
   public QueuedModelBattleTmd(final RenderBatch batch, final Shader<ShaderOptionsBattleTmd> shader, final ShaderOptionsBattleTmd shaderOptions, final FloatBuffer lightingBuffer) {
@@ -64,6 +65,11 @@ public class QueuedModelBattleTmd extends QueuedModel<ShaderOptionsBattleTmd, Qu
     return this;
   }
 
+  public QueuedModelBattleTmd modernMaterial(final boolean enabled) {
+    this.modernMaterial = enabled;
+    return this;
+  }
+
   public QueuedModelBattleTmd battleColour(final Vector3f colour) {
     this.battleColour.set(colour);
     return this;
@@ -90,6 +96,7 @@ public class QueuedModelBattleTmd extends QueuedModel<ShaderOptionsBattleTmd, Qu
     this.tmdTranslucency = 0;
     this.usePs1Depth = false;
     this.ctmdFlags = 0;
+    this.modernMaterial = false;
     this.battleColour.zero();
   }
 
@@ -126,6 +133,7 @@ public class QueuedModelBattleTmd extends QueuedModel<ShaderOptionsBattleTmd, Qu
     this.shaderOptions.tmdTranslucency(this.tmdTranslucency);
     this.shaderOptions.usePs1Depth(this.usePs1Depth);
     this.shaderOptions.ctmdFlags(this.ctmdFlags);
+    this.shaderOptions.modernMaterial(this.modernMaterial);
     this.shaderOptions.battleColour(this.battleColour);
   }
 
