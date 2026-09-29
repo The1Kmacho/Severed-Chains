@@ -200,7 +200,8 @@ public class RenderEngine {
     shader -> {
       shader.use();
       shader.uniformInt("tex24").set(0);
-      shader.uniformInt("tex15").set(1);\n      shader.uniformInt("materialTex").set(2);
+      shader.uniformInt("tex15").set(1);
+      shader.uniformInt("materialTex").set(2);
       shader.bindUniformBlock("transforms", ShaderUniformBuffer.TRANSFORM);
       shader.bindUniformBlock("transforms2", ShaderUniformBuffer.TRANSFORM2);
       shader.bindUniformBlock("lighting", ShaderUniformBuffer.LIGHTING);
@@ -216,6 +217,7 @@ public class RenderEngine {
       final ShaderUniformInt tmdTranslucency = shader.uniformInt("tmdTranslucency");
       final ShaderUniformInt usePs1Depth = shader.uniformInt("usePs1Depth");
       final ShaderUniformInt ctmdFlags = shader.uniformInt("ctmdFlags");
+      final ShaderUniformInt modernMaterial = shader.uniformInt("modernMaterial");
       final ShaderUniformVec3 battleColour = shader.uniformVec3("battleColour");
       return () -> new ShaderOptionsBattleTmd(modelIndex, recolour, uvOffset, clutOverride, tpageOverride, discardTranslucency, tmdTranslucency, usePs1Depth, ctmdFlags, modernMaterial, battleColour);
     }
