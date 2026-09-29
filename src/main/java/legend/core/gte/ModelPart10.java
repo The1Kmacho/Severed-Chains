@@ -15,6 +15,10 @@ public class ModelPart10 {
   public Obj renderObjOverride;
   /** Optional direct 24-bit texture used by the replacement render object. */
   public Texture renderTextureOverride;
+  /** Optional tangent-space normal map for modern replacement geometry. */
+  public Texture renderNormalOverride;
+  /** Optional material map: R=roughness, G=metallic, B=specular strength. */
+  public Texture renderMaterialOverride;
 
   public ModelPart10 set(final ModelPart10 other) {
     this.attribute_00 = other.attribute_00;
@@ -34,6 +38,8 @@ public class ModelPart10 {
     }
 
     this.renderTextureOverride = null;
+    this.renderNormalOverride = null;
+    this.renderMaterialOverride = null;
     this.tmd_08.delete();
   }
 }
