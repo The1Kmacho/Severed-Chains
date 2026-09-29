@@ -43,7 +43,7 @@ public final class VisualRemasterMod {
   private static final Field ENV_FOREGROUND_COUNT = privateField("envForegroundTextureCount_800cb580");
   private static final Field ENV_RENDER_METRICS = privateField("envRenderMetrics_800cb710");
 
-  private VisualRemasterMod() { }
+  public VisualRemasterMod() { }
 
   @EventListener
   public static void replaceSubmapEnvironment(final SubmapEnvironmentTextureEvent event) {
