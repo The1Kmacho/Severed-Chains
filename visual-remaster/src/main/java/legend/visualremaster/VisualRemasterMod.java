@@ -1,12 +1,16 @@
 package legend.visualremaster;
 
+import legend.core.gte.ModelPart10;
+import legend.core.renderer.Obj;
 import legend.core.renderer.Texture;
+import legend.game.modding.events.battle.CombatantModelLoadedEvent;
 import legend.game.modding.events.submap.SubmapEnvironmentTextureEvent;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.legendofdragoon.modloader.Mod;
 import org.legendofdragoon.modloader.events.EventListener;
 
+import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 
@@ -17,8 +21,83 @@ public final class VisualRemasterMod {
 
   private static final Logger LOGGER = LogManager.getFormatterLogger(VisualRemasterMod.class);
   private static final Path BACKGROUNDS = Path.of("mods", MOD_ID, "backgrounds");
+  private static final Path BATTLE_MODELS = Path.of("mods", MOD_ID, "models", "battle");
 
   public VisualRemasterMod() { }
+
+  @EventListener
+  public static void replaceCombatantModel(final CombatantModelLoadedEvent event) {
+    if(!event.combatant.isPlayer() || event.combatant.playerBent == null) {
+      return;
+    }
+
+    // Dart is retail character ID 0. Keep Dragoon Dart on the retail path for
+    // the first vertical slice so normal Dart can be developed independently.
+    if(event.combatant.playerBent.charId_272 != 0 || event.combatant.playerBent.isDragoon()) {
+      return;
+    }
+
+    final Path modelDir = BATTLE_MODELS.resolve("dart").resolve("combat");
+    final Path albedoPath = modelDir.resolve("albedo.png");
+
+    if(!Files.isRegularFile(albedoPath)) {
+      return;
+    }
+
+    Texture albedo = null;
+    int replacementCount = 0;
+
+    for(int partIndex = 0; partIndex < event.model.modelParts_00.length; partIndex++) {
+      final Path objPath = modelDir.resolve("part_%02d.obj".formatted(partIndex));
+      if(!Files.isRegularFile(objPath)) {
+        continue;
+      }
+
+      try {
+        if(albedo == null) {
+          albedo = Texture.create("Visual Remaster Dart battle albedo", builder -> {
+            builder.png(albedoPath);
+            builder.minFilter(true);
+            builder.magFilter(true);
+            builder.wrapS(false);
+            builder.wrapT(false);
+          });
+        }
+
+        final Obj replacement = ModernObjLoader.load(
+          "Visual Remaster Dart battle part " + partIndex,
+          objPath
+        );
+
+        final ModelPart10 part = event.model.modelParts_00[partIndex];
+        if(part.renderObjOverride != null) {
+          part.renderObjOverride.delete();
+        }
+
+        part.renderObjOverride = replacement;
+        part.renderTextureOverride = albedo;
+        replacementCount++;
+      } catch(final IOException | RuntimeException e) {
+        LOGGER.error(
+          "[Visual Remaster] Failed to load Dart battle replacement part %d from %s; keeping retail part",
+          partIndex,
+          objPath,
+          e
+        );
+      }
+    }
+
+    if(replacementCount != 0) {
+      LOGGER.info(
+        "[Visual Remaster] Loaded %d/%d Dart battle replacement parts from %s",
+        replacementCount,
+        event.model.modelParts_00.length,
+        modelDir
+      );
+    } else if(albedo != null) {
+      albedo.delete();
+    }
+  }
 
   @EventListener
   public static void replaceSubmapEnvironment(final SubmapEnvironmentTextureEvent event) {
