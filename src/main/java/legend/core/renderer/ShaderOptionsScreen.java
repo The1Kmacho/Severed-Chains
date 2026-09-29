@@ -2,6 +2,7 @@ package legend.core.renderer;
 
 public class ShaderOptionsScreen implements ShaderOptions {
   private final ShaderUniformInt enableVisualRemaster;
+  private final ShaderUniformInt bloomTexture;
   private final ShaderUniformInt enableCrt;
   private final ShaderUniformFloat time;
   private final ShaderUniformFloat scanlinesOpacity;
@@ -28,8 +29,9 @@ public class ShaderOptionsScreen implements ShaderOptions {
   private final ShaderUniformFloat bloomRadius;
   private final ShaderUniformVec4 turnOrderBounds;
 
-  public ShaderOptionsScreen(final ShaderUniformInt enableVisualRemaster, final ShaderUniformInt enableCrt, final ShaderUniformFloat time, final ShaderUniformFloat scanlinesOpacity, final ShaderUniformFloat scanlinesWidth, final ShaderUniformFloat grilleOpacity, final ShaderUniformVec2 resolution, final ShaderUniformInt pixelate, final ShaderUniformInt roll, final ShaderUniformFloat rollSpeed, final ShaderUniformFloat rollSize, final ShaderUniformFloat rollVariation, final ShaderUniformFloat distortIntensity, final ShaderUniformFloat noiseOpacity, final ShaderUniformFloat noiseSpeed, final ShaderUniformFloat staticIntensity, final ShaderUniformFloat aberration, final ShaderUniformFloat brightness, final ShaderUniformInt discolour, final ShaderUniformFloat warpAmount, final ShaderUniformFloat vignetteIntensity, final ShaderUniformFloat vignetteOpacity, final ShaderUniformFloat bloomIntensity, final ShaderUniformFloat bloomThreshold, final ShaderUniformFloat bloomRadius, final ShaderUniformVec4 turnOrderBounds) {
+  public ShaderOptionsScreen(final ShaderUniformInt enableVisualRemaster, final ShaderUniformInt bloomTexture, final ShaderUniformInt enableCrt, final ShaderUniformFloat time, final ShaderUniformFloat scanlinesOpacity, final ShaderUniformFloat scanlinesWidth, final ShaderUniformFloat grilleOpacity, final ShaderUniformVec2 resolution, final ShaderUniformInt pixelate, final ShaderUniformInt roll, final ShaderUniformFloat rollSpeed, final ShaderUniformFloat rollSize, final ShaderUniformFloat rollVariation, final ShaderUniformFloat distortIntensity, final ShaderUniformFloat noiseOpacity, final ShaderUniformFloat noiseSpeed, final ShaderUniformFloat staticIntensity, final ShaderUniformFloat aberration, final ShaderUniformFloat brightness, final ShaderUniformInt discolour, final ShaderUniformFloat warpAmount, final ShaderUniformFloat vignetteIntensity, final ShaderUniformFloat vignetteOpacity, final ShaderUniformFloat bloomIntensity, final ShaderUniformFloat bloomThreshold, final ShaderUniformFloat bloomRadius, final ShaderUniformVec4 turnOrderBounds) {
     this.enableVisualRemaster = enableVisualRemaster;
+    this.bloomTexture = bloomTexture;
     this.enableCrt = enableCrt;
     this.time = time;
     this.scanlinesOpacity = scanlinesOpacity;
@@ -55,6 +57,11 @@ public class ShaderOptionsScreen implements ShaderOptions {
     this.bloomThreshold = bloomThreshold;
     this.bloomRadius = bloomRadius;
     this.turnOrderBounds = turnOrderBounds;
+  }
+
+  public ShaderOptionsScreen bloomTexture(final int textureUnit) {
+    this.bloomTexture.set(textureUnit);
+    return this;
   }
 
   public ShaderOptionsScreen enableVisualRemaster(final boolean val) {
