@@ -25,15 +25,6 @@ jobs:
           java-version: '25'
           cache: gradle
 
-      - name: Set up Python for milestone asset generation
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.13'
-
-      - name: Generate Dart remaster milestone assets
-        shell: pwsh
-        run: python visual-remaster/tools/generate_dart_milestone.py
-
       - name: Build Windows package
         shell: pwsh
         run: .\gradlew.bat clean jar --stacktrace
