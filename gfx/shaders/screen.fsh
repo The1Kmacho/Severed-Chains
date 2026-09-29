@@ -78,7 +78,9 @@ vec3 visualRemaster(sampler2D tex, vec2 uv) {
 
   // Bloom is generated in linear colour at half resolution and composited before
   // tone mapping so highlights retain natural energy instead of forming an LDR halo.
-  colour += texture(bloom, uv).rgb * bloom_intensity;
+  if(bloom_intensity > 0.0) {
+    colour += texture(bloom, uv).rgb * bloom_intensity;
+  }
 
   const float exposure = 0.90;
   colour = acesFilm(max(colour * exposure, vec3(0.0)));
