@@ -1,0 +1,68 @@
+name: Field Battle Models Development Build
+
+on:
+  push:
+    branches:
+      - field-battle-models-development
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  windows-test-build:
+    runs-on: windows-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Check out field-model milestone
+        uses: actions/checkout@v4
+
+      - name: Set up Java 25
+        uses: actions/setup-java@v4
+        with:
+          distribution: corretto
+          java-version: '25'
+          cache: gradle
+
+      - name: Build Windows package
+        shell: pwsh
+        run: .\gradlew.bat clean jar --stacktrace
+
+      - name: Add test notes
+        shell: pwsh
+        run: |
+          @"
+          Severed Chains - Field Battle Models Development Build
+
+          Branch: $env:GITHUB_REF_NAME
+          Commit: $env:GITHUB_SHA
+
+          INCLUDED MOD
+          - mods/field-battle-models.jar
+
+          FIRST PROTOTYPE
+          - Dart only
+          - World map only
+          - Uses characters/dart/models/combat/32
+          - Uses characters/dart/textures/combat
+          - Keeps the original world-map idle/walk/run animations
+          - Automatically falls back to the retail field model if the animation/model part counts are incompatible
+
+          CHECK debug.log for:
+          [Field Battle Models] Requested Dart battle model on world map
+          World-map model replacement accepted
+          or
+          World-map model replacement rejected
+
+          This build does not yet replace town/dungeon/cutscene SOBJ models.
+          "@ | Set-Content -Path build\libs\FIELD_BATTLE_MODELS_TESTING.txt
+
+      - name: Upload runnable Windows field-model build
+        uses: actions/upload-artifact@v4
+        with:
+          name: Severed-Chains-Field-Battle-Models-Windows
+          path: build/libs/
+          if-no-files-found: error
+          retention-days: 14
+          compression-level: 6
