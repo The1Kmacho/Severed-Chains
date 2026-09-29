@@ -23,6 +23,7 @@ public final class VisualRemasterMod {
   private static final Path BACKGROUNDS = Path.of("mods", MOD_ID, "backgrounds");
   private static final Path BATTLE_MODELS = Path.of("mods", MOD_ID, "models", "battle");
   private static Texture dartBattleAlbedo;
+  private static Texture dartBattleMaterial;
 
   public VisualRemasterMod() { }
 
@@ -40,12 +41,14 @@ public final class VisualRemasterMod {
 
     final Path modelDir = BATTLE_MODELS.resolve("dart").resolve("combat");
     final Path albedoPath = modelDir.resolve("albedo.png");
+    final Path materialPath = modelDir.resolve("material.png");
 
     if(!Files.isRegularFile(albedoPath)) {
       return;
     }
 
     Texture albedo = dartBattleAlbedo;
+    Texture material = dartBattleMaterial;
     int replacementCount = 0;
 
     for(int partIndex = 0; partIndex < event.model.modelParts_00.length; partIndex++) {
@@ -79,6 +82,23 @@ public final class VisualRemasterMod {
 
         part.renderObjOverride = replacement;
         part.renderTextureOverride = albedo;
+
+        if(Files.isRegularFile(materialPath)) {
+          if(material == null) {
+            material = Texture.create("Visual Remaster Dart battle material", builder -> {
+              builder.png(materialPath);
+              builder.minFilter(true);
+              builder.magFilter(true);
+              builder.wrapS(false);
+              builder.wrapT(false);
+            });
+            material.persistent = true;
+            dartBattleMaterial = material;
+          }
+
+          part.renderMaterialOverride = material;
+        }
+
         replacementCount++;
       } catch(final IOException | RuntimeException e) {
         LOGGER.error(
