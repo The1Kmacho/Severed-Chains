@@ -8,6 +8,7 @@ layout(location = 0) out vec4 frag;
 
 // screen image
 uniform sampler2D screen;
+uniform sampler2D bloom;
 
 uniform bool enableVisualRemaster;
 uniform bool enableCrt;
@@ -74,6 +75,10 @@ vec3 visualRemaster(sampler2D tex, vec2 uv) {
   vec3 colour = pow(center, vec3(2.2));
   vec3 blurred = pow(crossBlur, vec3(2.2));
   colour += (colour - blurred) * 0.20;
+
+  // Bloom is generated in linear colour at half resolution and composited before
+  // tone mapping so highlights retain natural energy instead of forming an LDR halo.
+  colour += texture(bloom, uv).rgb * bloom_intensity;
 
   const float exposure = 0.90;
   colour = acesFilm(max(colour * exposure, vec3(0.0)));
