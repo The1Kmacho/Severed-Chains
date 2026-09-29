@@ -106,6 +106,7 @@ import java.util.Arrays;
 import java.util.function.BiFunction;
 
 import static legend.core.GameEngine.CONFIG;
+import static legend.core.GameEngine.EVENTS;
 import static legend.core.GameEngine.GPU;
 import static legend.core.GameEngine.GTE;
 import static legend.core.GameEngine.PLATFORM;
@@ -1418,7 +1419,7 @@ public final class SEffe {
             EVENTS.postEvent(new DragoonAdditionCompletedEvent(
               (Battle)currentEngineState_8004dd04,
               daddy.charId_18,
-              Math.max(0, daddyHitsCompleted_80119f40),
+              java.lang.Math.max(0, daddyHitsCompleted_80119f40),
               daddy.totalPressCount_14
             ));
           }
