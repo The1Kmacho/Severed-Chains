@@ -191,6 +191,28 @@ tasks.register('sourceJar', Jar) {
   archiveClassifier = "sources"
 }
 
+// Visual Remaster content mod. Keep this as a separate JAR so background and
+// texture replacements remain normal Severed Chains mod content rather than
+// becoming part of the engine itself.
+tasks.register('compileVisualRemaster', JavaCompile) {
+  dependsOn tasks.named('classes')
+  source = fileTree('visual-remaster/src/main/java') {
+    include '**/*.java'
+  }
+  classpath = sourceSets.main.output + configurations.compileClasspath
+  destinationDirectory = layout.buildDirectory.dir('classes/java/visualRemaster')
+  sourceCompatibility = JavaVersion.VERSION_25
+  targetCompatibility = JavaVersion.VERSION_25
+  options.encoding = 'UTF-8'
+}
+
+tasks.register('visualRemasterJar', Jar) {
+  dependsOn tasks.named('compileVisualRemaster')
+  archiveFileName = 'visual-remaster.jar'
+  destinationDirectory = layout.buildDirectory.dir('libs/mods')
+  from tasks.named('compileVisualRemaster').map { it.destinationDirectory }
+}
+
 tasks.register('clearOutput', Delete) {
   delete layout.buildDirectory.dir("libs/libs")
   delete layout.buildDirectory.file("libs/**")
@@ -272,6 +294,7 @@ tasks.register('copySupportFiles', Copy) {
 }
 
 jar.dependsOn(clearOutput, copyLibs, copySupportFiles, updaterJar, copyUpdaterConfig)
+jar.finalizedBy tasks.named('visualRemasterJar')
 
 publishing {
   publications {
