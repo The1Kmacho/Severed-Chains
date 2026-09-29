@@ -11,6 +11,7 @@ import legend.game.characters.CharacterAdditionInfo;
 import legend.game.characters.Element;
 import legend.game.characters.UnaryStatModConfig;
 import legend.game.characters.VitalsStat;
+import legend.game.combat.Battle;
 import legend.game.combat.bent.AttackEvent;
 import legend.game.combat.bent.AttackSpecialEffectEvent;
 import legend.game.combat.bent.BattleEntity27c;
@@ -19,8 +20,12 @@ import legend.game.combat.bent.PlayerBattleEntity;
 import legend.game.combat.types.AttackType;
 import legend.game.modding.events.characters.AdditionDescriptionEvent;
 import legend.game.modding.events.characters.DragoonAdditionCompletedEvent;
+import legend.game.modding.events.RenderEvent;
 import legend.game.modding.events.input.InputPressedEvent;
 import legend.game.modding.events.input.RegisterDefaultInputBindingsEvent;
+import legend.game.inventory.screens.FontOptions;
+import legend.game.inventory.screens.HorizontalAlign;
+import legend.game.inventory.screens.TextColour;
 import legend.lodmod.LodAdditions;
 import legend.lodmod.LodMod;
 import org.apache.logging.log4j.LogManager;
@@ -34,6 +39,8 @@ import org.legendofdragoon.modloader.registries.RegistryId;
 import java.util.Set;
 
 import static legend.core.GameEngine.REGISTRIES;
+import static legend.game.EngineStates.currentEngineState_8004dd04;
+import static legend.game.Text.renderText;
 import static legend.game.Scus94491BpeSegment_8006.battleState_8006e398;
 import static legend.game.Scus94491BpeSegment_800b.gameState_800babc8;
 import static legend.game.Scus94491BpeSegment_800b.tickCount_800bb0fc;
@@ -58,6 +65,20 @@ public final class GameplayOverhaulMod {
   private static int lastDodgeTick = Integer.MIN_VALUE;
   private static int negatedAttackTick = Integer.MIN_VALUE;
   private static BattleEntity27c negatedDefender;
+
+  private static final int FEEDBACK_TICKS = 18;
+  private static int feedbackTicks;
+  private static FeedbackType feedbackType = FeedbackType.NONE;
+  private static final FontOptions FEEDBACK_FONT = new FontOptions()
+    .horizontalAlign(HorizontalAlign.CENTRE)
+    .shadowColour(TextColour.BLACK)
+    .size(0.95f);
+
+  private enum FeedbackType {
+    NONE,
+    PARRY,
+    DODGE
+  }
 
   private static final Set<RegistryId> FINAL_ADDITIONS = Set.of(
     LodAdditions.BLAZING_DYNAMO.getId(),
@@ -107,6 +128,7 @@ public final class GameplayOverhaulMod {
         event.damage = 0;
         lastParryTick = Integer.MIN_VALUE;
         markNegatedAttack(event.defender);
+        showFeedback(FeedbackType.PARRY);
         LOGGER.info("[Gameplay Overhaul] PARRY");
         return;
       }
@@ -115,6 +137,7 @@ public final class GameplayOverhaulMod {
         event.damage = 0;
         lastDodgeTick = Integer.MIN_VALUE;
         markNegatedAttack(event.defender);
+        showFeedback(FeedbackType.DODGE);
         LOGGER.info("[Gameplay Overhaul] DODGE");
         return;
       }
@@ -139,6 +162,29 @@ public final class GameplayOverhaulMod {
 
     final int percent = isFinal(player.addition) ? 25 : 10;
     addElementalBonus(event, player.getElement(), percent);
+  }
+
+  @EventListener
+  public static void renderFeedback(final RenderEvent event) {
+    if(feedbackTicks <= 0 || !(currentEngineState_8004dd04 instanceof Battle)) {
+      return;
+    }
+
+    final float progress = feedbackTicks / (float)FEEDBACK_TICKS;
+    FEEDBACK_FONT.size(0.85f + progress * 0.25f);
+
+    if(feedbackType == FeedbackType.PARRY) {
+      FEEDBACK_FONT.colour(TextColour.RED);
+      renderText("COUNTER!", 160.0f, 64.0f, FEEDBACK_FONT);
+    } else if(feedbackType == FeedbackType.DODGE) {
+      FEEDBACK_FONT.colour(TextColour.CYAN);
+      renderText("DODGE!", 160.0f, 64.0f, FEEDBACK_FONT);
+    }
+
+    feedbackTicks--;
+    if(feedbackTicks == 0) {
+      feedbackType = FeedbackType.NONE;
+    }
   }
 
   @EventListener
@@ -231,6 +277,11 @@ public final class GameplayOverhaulMod {
         character.selectedAddition_19
       );
     }
+  }
+
+  private static void showFeedback(final FeedbackType type) {
+    feedbackType = type;
+    feedbackTicks = FEEDBACK_TICKS;
   }
 
   private static boolean isFinal(final Addition addition) {
