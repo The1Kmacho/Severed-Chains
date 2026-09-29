@@ -191,6 +191,27 @@ tasks.register('sourceJar', Jar) {
   archiveClassifier = "sources"
 }
 
+// Field battle-model reuse is packaged as a standalone mod. Core changes on
+// this branch are limited to generic model-replacement hooks.
+tasks.register('compileFieldBattleModels', JavaCompile) {
+  dependsOn tasks.named('classes')
+  source = fileTree('field-battle-models/src/main/java') {
+    include '**/*.java'
+  }
+  classpath = sourceSets.main.output + configurations.compileClasspath
+  destinationDirectory = layout.buildDirectory.dir('classes/java/fieldBattleModels')
+  sourceCompatibility = JavaVersion.VERSION_25
+  targetCompatibility = JavaVersion.VERSION_25
+  options.encoding = 'UTF-8'
+}
+
+tasks.register('fieldBattleModelsJar', Jar) {
+  dependsOn tasks.named('compileFieldBattleModels')
+  archiveFileName = 'field-battle-models.jar'
+  destinationDirectory = layout.buildDirectory.dir('libs/mods')
+  from layout.buildDirectory.dir('classes/java/fieldBattleModels')
+}
+
 tasks.register('clearOutput', Delete) {
   delete layout.buildDirectory.dir("libs/libs")
   delete layout.buildDirectory.file("libs/**")
@@ -272,6 +293,7 @@ tasks.register('copySupportFiles', Copy) {
 }
 
 jar.dependsOn(clearOutput, copyLibs, copySupportFiles, updaterJar, copyUpdaterConfig)
+jar.finalizedBy tasks.named('fieldBattleModelsJar')
 
 publishing {
   publications {
