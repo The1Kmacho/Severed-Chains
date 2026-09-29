@@ -21,6 +21,8 @@ public class DragoonAdditionScriptData1c implements ScriptedObject {
   /** 0 = requires input, 1 = automatic, 2 = can't be started for some reason and will never be deallocated */
   public int inputMode_13;
   public int totalPressCount_14;
+  /** Prevents the completion event from being posted more than once. */
+  public boolean completionEventPosted;
   public int charId_18;
 
   @Override
