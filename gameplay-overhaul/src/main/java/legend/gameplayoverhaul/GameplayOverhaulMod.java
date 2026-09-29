@@ -98,7 +98,7 @@ public final class GameplayOverhaulMod {
 
   @EventListener
   public static void attack(final AttackEvent event) {
-    if(event.attacker instanceof final MonsterBattleEntity && event.defender instanceof final PlayerBattleEntity) {
+    if(event.attacker instanceof MonsterBattleEntity && event.defender instanceof PlayerBattleEntity) {
       final int now = tickCount_800bb0fc;
       final int parryAge = now - lastParryTick;
       final int dodgeAge = now - lastDodgeTick;
