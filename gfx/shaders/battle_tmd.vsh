@@ -14,6 +14,7 @@ out VS_OUT {
   flat vec2 vertClut;
   flat int vertBpp;
   smooth vec4 vertColour;
+  smooth vec3 viewNormal;
   flat int vertFlags;
 
   flat int translucency;
@@ -87,6 +88,7 @@ void main() {
 
   ModelTransforms t = modelTransforms[int(modelIndex)];
   Light l = lights[int(modelIndex)];
+  vs_out.viewNormal = normalize(mat3(camera * t.model) * inNorm);
 
   if(textured && translucent && !lit && (ctmd || uniformLit)) {
     vs_out.vertColour.rgb = inColour.rgb * battleColour.rgb;
