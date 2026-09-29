@@ -213,6 +213,12 @@ tasks.register('visualRemasterJar', Jar) {
   from layout.buildDirectory.dir('classes/java/visualRemaster')
 }
 
+tasks.register('copyVisualRemasterAssets', Copy) {
+  dependsOn tasks.named('visualRemasterJar')
+  from 'visual-remaster/assets'
+  into layout.buildDirectory.dir('libs/mods/visual_remaster')
+}
+
 tasks.register('clearOutput', Delete) {
   delete layout.buildDirectory.dir("libs/libs")
   delete layout.buildDirectory.file("libs/**")
@@ -294,7 +300,7 @@ tasks.register('copySupportFiles', Copy) {
 }
 
 jar.dependsOn(clearOutput, copyLibs, copySupportFiles, updaterJar, copyUpdaterConfig)
-jar.finalizedBy tasks.named('visualRemasterJar')
+jar.finalizedBy tasks.named('copyVisualRemasterAssets')
 
 publishing {
   publications {

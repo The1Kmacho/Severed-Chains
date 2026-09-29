@@ -45,10 +45,6 @@ public final class VisualRemasterMod {
     final Path albedoPath = modelDir.resolve("albedo.png");
     final Path materialPath = modelDir.resolve("material.png");
 
-    if(!Files.isRegularFile(albedoPath)) {
-      return;
-    }
-
     Texture albedo = dartBattleAlbedo;
     Texture material = dartBattleMaterial;
     int replacementCount = 0;
@@ -60,18 +56,6 @@ public final class VisualRemasterMod {
       }
 
       try {
-        if(albedo == null) {
-          albedo = Texture.create("Visual Remaster Dart battle albedo", builder -> {
-            builder.png(albedoPath);
-            builder.minFilter(true);
-            builder.magFilter(true);
-            builder.wrapS(false);
-            builder.wrapT(false);
-          });
-          albedo.persistent = true;
-          dartBattleAlbedo = albedo;
-        }
-
         final Obj replacement = ModernObjLoader.load(
           "Visual Remaster Dart battle part " + partIndex,
           objPath
@@ -101,8 +85,28 @@ public final class VisualRemasterMod {
           }
 
           part.renderTextureOverride = partAlbedo;
-        } else {
+        } else if(Files.isRegularFile(albedoPath)) {
+          if(albedo == null) {
+            albedo = Texture.create("Visual Remaster Dart battle albedo", builder -> {
+              builder.png(albedoPath);
+              builder.minFilter(true);
+              builder.magFilter(true);
+              builder.wrapS(false);
+              builder.wrapT(false);
+            });
+            albedo.persistent = true;
+            dartBattleAlbedo = albedo;
+          }
+
           part.renderTextureOverride = albedo;
+        } else {
+          LOGGER.warn(
+            "[Visual Remaster] Dart part %d has replacement geometry but no part-specific or shared albedo; keeping retail part",
+            partIndex
+          );
+          replacement.delete();
+          part.renderObjOverride = null;
+          continue;
         }
 
         final Path partMaterialPath = modelDir.resolve("part_%02d_material.png".formatted(partIndex));
@@ -138,6 +142,13 @@ public final class VisualRemasterMod {
           part.renderMaterialOverride = material;
         }
 
+        LOGGER.info(
+          "[Visual Remaster] active Dart replacement part=%d obj=%s albedo=%s material=%s",
+          partIndex,
+          objPath.getFileName(),
+          Files.isRegularFile(partAlbedoPath) ? partAlbedoPath.getFileName() : albedoPath.getFileName(),
+          Files.isRegularFile(partMaterialPath) ? partMaterialPath.getFileName() : Files.isRegularFile(materialPath) ? materialPath.getFileName() : "none"
+        );
         replacementCount++;
       } catch(final IOException | RuntimeException e) {
         LOGGER.error(
