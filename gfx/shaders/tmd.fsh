@@ -6,6 +6,7 @@ in GS_OUT {
   flat vec2 vertClut;
   flat int vertBpp;
   smooth vec4 vertColour;
+  smooth vec3 viewNormal;
   flat int vertFlags;
 
   flat int translucency;
