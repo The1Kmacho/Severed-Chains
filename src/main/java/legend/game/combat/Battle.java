@@ -8831,7 +8831,7 @@ public class Battle extends EngineState<Battle> {
 
     //LAB_800f7fe0
     //LAB_800f7fe4
-    return effect;
+    return EVENTS.postEvent(new AttackSpecialEffectEvent(this, attacker, defender, attackType, effect)).effect;
   }
 
   @Method(0x800f84c8L)
