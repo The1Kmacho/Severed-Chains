@@ -1,0 +1,66 @@
+name: Visual Remaster Test Build
+
+on:
+  push:
+    branches:
+      - visual-remaster
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  windows-test-build:
+    runs-on: windows-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Check out visual remaster
+        uses: actions/checkout@v4
+
+      - name: Set up Java 25
+        uses: actions/setup-java@v4
+        with:
+          distribution: corretto
+          java-version: '25'
+          cache: gradle
+
+      - name: Build Windows package
+        shell: pwsh
+        run: .\gradlew.bat clean jar --stacktrace
+
+      - name: Add test-build notes
+        shell: pwsh
+        run: |
+          @"
+          Severed Chains - Visual Remaster Test Build
+
+          Branch: visual-remaster
+          Commit: $env:GITHUB_SHA
+
+          HOW TO RUN
+          1. Extract this artifact to a normal writable folder.
+          2. Copy your Legend of Dragoon disc images into the isos folder as required by Severed Chains.
+          3. Double-click launch.bat.
+          4. On first launch, launch.bat will download Java 25 automatically if jdk25 is not already present.
+          5. In Options > Postprocessing, enable "Visual Remaster".
+          6. Keep CRT Enabled off when testing the remaster renderer.
+
+          CURRENT REMASTER FEATURES
+          - Half-float RGBA16F scene targets
+          - Filmic ACES-style tone mapping
+          - Linear-space sharpening and color treatment
+          - Half-resolution bright-pass bloom with separable Gaussian blur
+          - Legacy/CRT rendering remains available
+
+          This is an experimental test build. Keep your existing Severed Chains install separate.
+          "@ | Set-Content -Path build\libs\VISUAL_REMASTER_TESTING.txt
+
+      - name: Upload runnable Windows test build
+        uses: actions/upload-artifact@v4
+        with:
+          name: Severed-Chains-Visual-Remaster-Windows
+          path: build/libs/
+          if-no-files-found: error
+          retention-days: 14
+          compression-level: 6
