@@ -1,9 +1,9 @@
-name: Visual Remaster Test Build
+name: Visual Remaster Development Build
 
 on:
   push:
     branches:
-      - visual-remaster
+      - development
   workflow_dispatch:
 
 permissions:
@@ -15,7 +15,7 @@ jobs:
     timeout-minutes: 30
 
     steps:
-      - name: Check out visual remaster
+      - name: Check out build branch
         uses: actions/checkout@v4
 
       - name: Set up Java 25
@@ -33,9 +33,9 @@ jobs:
         shell: pwsh
         run: |
           @"
-          Severed Chains - Visual Remaster Test Build
+          Severed Chains - Visual Remaster Development Build
 
-          Branch: visual-remaster
+          Branch: $env:GITHUB_REF_NAME
           Commit: $env:GITHUB_SHA
 
           HOW TO RUN
@@ -46,17 +46,11 @@ jobs:
           5. In Options > Postprocessing, enable "Visual Remaster".
           6. Keep CRT Enabled off when testing the remaster renderer.
 
-          CURRENT REMASTER FEATURES
-          - Half-float RGBA16F scene targets
-          - Filmic ACES-style tone mapping
-          - Linear-space sharpening and color treatment
-          - Half-resolution bright-pass bloom with separable Gaussian blur
-          - Legacy/CRT rendering remains available
-
-          This is an experimental test build. Keep your existing Severed Chains install separate.
+          This artifact is produced only from the development branch.
+          Work-in-progress commits stay on visual-remaster until a milestone is ready for testing.
           "@ | Set-Content -Path build\libs\VISUAL_REMASTER_TESTING.txt
 
-      - name: Upload runnable Windows test build
+      - name: Upload runnable Windows development build
         uses: actions/upload-artifact@v4
         with:
           name: Severed-Chains-Visual-Remaster-Windows
