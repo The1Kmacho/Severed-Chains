@@ -1419,7 +1419,7 @@ public final class SEffe {
             EVENTS.postEvent(new DragoonAdditionCompletedEvent(
               (Battle)currentEngineState_8004dd04,
               daddy.charId_18,
-              Math.max(0, daddyHitsCompleted_80119f40),
+              java.lang.Math.max(0, daddyHitsCompleted_80119f40),
               daddy.totalPressCount_14
             ));
           }
