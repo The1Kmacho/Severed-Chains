@@ -793,6 +793,11 @@ public abstract class BattleEntity27c extends BattleObject {
 
         if(part.renderTextureOverride != null) {
           queue.texture(part.renderTextureOverride, 0);
+          queue.modernMaterial(true);
+
+          if(part.renderMaterialOverride != null) {
+            queue.texture(part.renderMaterialOverride, 2);
+          }
         } else if(combatant.texture != null) {
           queue.texture(combatant.texture.vramTexture15, 1);
         }
