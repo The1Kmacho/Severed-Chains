@@ -33,6 +33,7 @@ import legend.game.characters.StatType;
 import legend.game.characters.UnaryStat;
 import legend.game.characters.VitalsStat;
 import legend.game.combat.bent.AttackEvent;
+import legend.game.combat.bent.AttackSpecialEffectEvent;
 import legend.game.combat.bent.BattleEntity27c;
 import legend.game.combat.bent.BattleEntityStat;
 import legend.game.combat.bent.ElementIcon;
