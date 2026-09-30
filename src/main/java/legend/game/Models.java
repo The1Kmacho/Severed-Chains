@@ -237,11 +237,16 @@ public final class Models {
   public static void applyKeyframe(final Model124 model) {
     //LAB_80021320
     for(int i = 0; i < model.modelParts_00.length; i++) {
+      final int animationPart = model.getAnimationPartIndex(i);
+      if(animationPart < 0 || animationPart >= model.keyframes_90[model.currentKeyframe_94].length) {
+        continue;
+      }
+
       final GsCOORDINATE2 coord2 = model.modelParts_00[i].coord2_04;
       final Transforms params = coord2.transforms;
 
-      params.quat.set(model.keyframes_90[model.currentKeyframe_94][i].quat);
-      params.trans.set(model.keyframes_90[model.currentKeyframe_94][i].translate_06);
+      params.quat.set(model.keyframes_90[model.currentKeyframe_94][animationPart].quat);
+      params.trans.set(model.keyframes_90[model.currentKeyframe_94][animationPart].translate_06);
 
       coord2.coord.rotation(params.quat);
       coord2.coord.transfer.set(params.trans);
@@ -252,12 +257,17 @@ public final class Models {
   public static void applyInterpolationFrame(final Model124 model, final int framesPerKeyframe) {
     //LAB_80021404
     for(int i = 0; i < model.modelParts_00.length; i++) {
+      final int animationPart = model.getAnimationPartIndex(i);
+      if(animationPart < 0 || animationPart >= model.keyframes_90[model.currentKeyframe_94].length) {
+        continue;
+      }
+
       final GsCOORDINATE2 coord2 = model.modelParts_00[i].coord2_04;
       final Transforms params = coord2.transforms;
 
       final float interpolationScale = (model.subFrameIndex + 1.0f) / framesPerKeyframe;
-      params.trans.lerp(model.keyframes_90[model.currentKeyframe_94][i].translate_06, interpolationScale, coord2.coord.transfer);
-      params.quat.nlerp(model.keyframes_90[model.currentKeyframe_94][i].quat, interpolationScale, params.quat);
+      params.trans.lerp(model.keyframes_90[model.currentKeyframe_94][animationPart].translate_06, interpolationScale, coord2.coord.transfer);
+      params.quat.nlerp(model.keyframes_90[model.currentKeyframe_94][animationPart].quat, interpolationScale, params.quat);
       coord2.coord.rotation(params.quat);
     }
   }

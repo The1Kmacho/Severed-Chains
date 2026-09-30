@@ -22,8 +22,13 @@ public class Model124 {
   public final GsCOORDINATE2 coord2_14 = new GsCOORDINATE2();
 //  public final Transforms transforms_64 = new Transforms(); // Use coord2_14.transforms
 //  public Tmd tmd_8c;
-  /** [keyframe][part] */
+  /** [keyframe][animation part] */
   public Keyframe0c[][] keyframes_90;
+  /**
+   * Optional mapping from model part index to animation part index.
+   * Null means the traditional 1:1 mapping.
+   */
+  public int[] animationPartMap;
   public int currentKeyframe_94;
 
   /** short */
@@ -87,6 +92,18 @@ public class Model124 {
     this.name = name;
   }
 
+  public int getAnimationPartIndex(final int modelPartIndex) {
+    if(this.animationPartMap == null) {
+      return modelPartIndex;
+    }
+
+    if(modelPartIndex < 0 || modelPartIndex >= this.animationPartMap.length) {
+      return -1;
+    }
+
+    return this.animationPartMap[modelPartIndex];
+  }
+
   @Override
   public String toString() {
     return this.name + " (" + super.toString() + ')';
@@ -144,6 +161,7 @@ public class Model124 {
     this.anim_08 = other.anim_08;
     this.coord2_14.set(other.coord2_14);
     this.keyframes_90 = other.keyframes_90;
+    this.animationPartMap = other.animationPartMap != null ? other.animationPartMap.clone() : null;
     this.currentKeyframe_94 = other.currentKeyframe_94;
     this.partCount_98 = other.partCount_98;
     this.totalFrames_9a = other.totalFrames_9a;

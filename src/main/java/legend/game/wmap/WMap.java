@@ -1865,28 +1865,59 @@ public class WMap extends EngineState<WMap> {
 
     final int replacementPartCount = event.model.tmdPtr_00.tmd.header.nobj;
     boolean compatible = true;
-    for(int i = 0; i < animations.length; i++) {
-      if(animations[i].modelPartCount_0c != replacementPartCount) {
-        LOGGER.warn(
-          "World-map model replacement rejected for %s: model parts=%d, animation %d parts=%d",
-          character.template.getRegistryId(),
-          replacementPartCount,
-          i,
-          animations[i].modelPartCount_0c
-        );
-        compatible = false;
+
+    if(event.animationPartMap != null && event.animationPartMap.length != replacementPartCount) {
+      LOGGER.warn(
+        "World-map model replacement rejected for %s: model parts=%d, retarget entries=%d",
+        character.template.getRegistryId(),
+        replacementPartCount,
+        event.animationPartMap.length
+      );
+      compatible = false;
+    }
+
+    for(int i = 0; i < animations.length && compatible; i++) {
+      if(event.animationPartMap == null) {
+        if(animations[i].modelPartCount_0c != replacementPartCount) {
+          LOGGER.warn(
+            "World-map model replacement rejected for %s: model parts=%d, animation %d parts=%d",
+            character.template.getRegistryId(),
+            replacementPartCount,
+            i,
+            animations[i].modelPartCount_0c
+          );
+          compatible = false;
+        }
+      } else {
+        for(final int animationPart : event.animationPartMap) {
+          if(animationPart < 0 || animationPart >= animations[i].modelPartCount_0c) {
+            LOGGER.warn(
+              "World-map model replacement rejected for %s: animation %d has %d parts, retarget references %d",
+              character.template.getRegistryId(),
+              i,
+              animations[i].modelPartCount_0c,
+              animationPart
+            );
+            compatible = false;
+            break;
+          }
+        }
       }
     }
 
     final CContainer model = compatible ? event.model : originalModel;
     final Tim tim = compatible ? event.texture : originalTexture;
-    this.modelAndAnimData_800c66a8.playerModelTmdFileData_b4[0].extendedTmd_00 = model;
+    final PlayerModelTmdFileData playerData = this.modelAndAnimData_800c66a8.playerModelTmdFileData_b4[0];
+    playerData.extendedTmd_00 = model;
+    playerData.animationPartMap = compatible ? event.animationPartMap : null;
 
     if(compatible && model != originalModel) {
       LOGGER.info(
-        "World-map model replacement accepted for %s: %d parts",
+        "World-map model replacement accepted for %s: model parts=%d, animation parts=%d, retarget=%s",
         character.template.getRegistryId(),
-        replacementPartCount
+        replacementPartCount,
+        animations[0].modelPartCount_0c,
+        event.animationPartMap != null
       );
     }
 
@@ -3111,6 +3142,7 @@ public class WMap extends EngineState<WMap> {
       final Model124 model = modelAndAnimData.models_0c[i];
 
       //LAB_800dfcc0
+      model.animationPartMap = modelAndAnimData.playerModelTmdFileData_b4[i].animationPartMap;
       initModel(model, modelAndAnimData.playerModelTmdFileData_b4[i].extendedTmd_00, modelAndAnimData.playerModelTmdFileData_b4[i].tmdAnim_08[0]);
       loadModelStandardAnimation(model, modelAndAnimData.playerModelTmdFileData_b4[i].tmdAnim_08[0]);
 
