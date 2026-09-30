@@ -106,9 +106,13 @@ public final class GameplayOverhaulMod {
 
   @EventListener
   public static void battleIntroCamera(final BattleIntroCameraEvent event) {
-    // Random/escapable encounters use the fast path. Boss/story encounters keep
-    // their existing opening sequence so bespoke intros are never suppressed.
-    event.skipStandardIntro = event.encounter.escapeChance > 0;
+    // Camera scripts 0-31 are the standard battle-intro showcase set. Higher
+    // indices are encounter-specific scripted openings. Explicit intro waits
+    // likewise indicate bespoke staging (for example the Divine Dragon).
+    event.skipStandardIntro =
+      event.encounter.introWaitTicks == 0
+        && event.encounter.playerOpeningCamera < 32
+        && event.encounter.monsterOpeningCamera < 32;
   }
 
   @EventListener
