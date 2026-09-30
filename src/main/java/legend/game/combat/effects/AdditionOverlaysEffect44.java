@@ -213,7 +213,7 @@ public class AdditionOverlaysEffect44 implements Effect<EffectManagerParams.Void
     hitOverlay.frameSuccessLowerBound_10 = this.visualOnlyWindowStart;
     hitOverlay.frameSuccessUpperBound_12 = this.visualOnlyImpactFrame;
     hitOverlay.numSuccessFrames_0e = java.lang.Math.max(1, successFrames);
-    hitOverlay.borderColoursArrayIndex_02 = 3;
+    hitOverlay.borderColoursArrayIndex_02 = counterStyle ? 2 : 3;
     hitOverlay.isCounter_1c = counterStyle;
 
     if(Config.changeAdditionOverlayRgb()) {
@@ -244,9 +244,10 @@ public class AdditionOverlaysEffect44 implements Effect<EffectManagerParams.Void
       borderOverlay.sideEffects_0d = 0;
       borderOverlay.framesUntilRender_0a =
         java.lang.Math.max(0, this.visualOnlyImpactFrame + val - 17);
-      borderOverlay.r_04 = additionBorderColours_800fb7f0[9];
-      borderOverlay.g_05 = additionBorderColours_800fb7f0[10];
-      borderOverlay.b_06 = additionBorderColours_800fb7f0[11];
+      final int colourIndex = hitOverlay.borderColoursArrayIndex_02 * 3;
+      borderOverlay.r_04 = additionBorderColours_800fb7f0[colourIndex];
+      borderOverlay.g_05 = additionBorderColours_800fb7f0[colourIndex + 1];
+      borderOverlay.b_06 = additionBorderColours_800fb7f0[colourIndex + 2];
       val--;
     }
 

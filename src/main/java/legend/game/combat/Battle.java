@@ -425,6 +425,8 @@ public class Battle extends EngineState<Battle> {
   private final Object usedMonsterTextureSlotsLock = new Object();
   private int usedMonsterTextureSlots_800c66c4;
   public ScriptState<? extends BattleEntity27c> currentTurnBent_800c66c8;
+  /** Current monster turn that has already emitted its early physical parry cue. */
+  private ScriptState<? extends BattleEntity27c> earlyPhysicalCueTurn;
   private int mcqBaseOffsetX_800c66cc;
 
   private boolean shouldRenderMcq_800c66d4;
@@ -2357,6 +2359,7 @@ public class Battle extends EngineState<Battle> {
         if(this.forcedTurnBent_800c66bc != null) { // A bent has a forced turn
           this.forcedTurnBent_800c66bc.clearFlag(FLAG_TAKE_FORCED_TURN).setFlag(FLAG_RELOAD_BATTLE_ACTIONS).setFlag(FLAG_CURRENT_TURN);
           this.currentTurnBent_800c66c8 = this.forcedTurnBent_800c66bc;
+          this.earlyPhysicalCueTurn = null;
 
           LOGGER.info(BATTLE, "Bent %s (%s) forced turn start", this.currentTurnBent_800c66c8.innerStruct_00.getName(), this.currentTurnBent_800c66c8.name);
           EVENTS.postEvent(new BattleEntityTurnEvent<>(this, encounter, this.forcedTurnBent_800c66bc));
@@ -2366,6 +2369,7 @@ public class Battle extends EngineState<Battle> {
           if(battleState_8006e398.hasAliveMonsters()) { // Monsters alive, calculate next bent turn
             //LAB_800c7d3c
             this.currentTurnBent_800c66c8 = battleState_8006e398.getCurrentTurnBent();
+            this.earlyPhysicalCueTurn = null;
             this.currentTurnBent_800c66c8.setFlag(FLAG_RELOAD_BATTLE_ACTIONS).setFlag(FLAG_CURRENT_TURN);
 
             LOGGER.info(BATTLE, "Bent %s (%s) turn start", this.currentTurnBent_800c66c8.innerStruct_00.getName(), this.currentTurnBent_800c66c8.name);
@@ -3738,6 +3742,7 @@ public class Battle extends EngineState<Battle> {
     //LAB_800cbb98
     this.FUN_800cdc1c(childState, x, y, z, script.params_20[3].get(), script.params_20[4].get(), script.params_20[5].get(), 0, script.params_20[2].get());
     childState.setTempTicker(this::FUN_800cb250);
+    this.postIncomingPhysicalCueFromMovement(childState, parentBentIndex, script.params_20[2].get());
     return FlowControl.CONTINUE;
   }
 
@@ -3801,6 +3806,7 @@ public class Battle extends EngineState<Battle> {
     //LAB_800cbe78
     this.FUN_800cdc1c(childState, x, y, z, script.params_20[3].get(), script.params_20[4].get(), script.params_20[5].get(), 0x20, script.params_20[2].get());
     childState.setTempTicker(this::FUN_800cb250);
+    this.postIncomingPhysicalCueFromMovement(childState, script.params_20[1].get(), script.params_20[2].get());
     return FlowControl.CONTINUE;
   }
 
@@ -3860,6 +3866,7 @@ public class Battle extends EngineState<Battle> {
     //LAB_800cc160
     this.FUN_800cdc1c(childState, translation.x, translation.y, translation.z, script.params_20[3].get(), translation.y, script.params_20[4].get(), 0, script.params_20[2].get());
     childState.setTempTicker(this::FUN_800cb250);
+    this.postIncomingPhysicalCueFromMovement(childState, parentBentIndex, script.params_20[2].get());
     return FlowControl.CONTINUE;
   }
 
@@ -8993,6 +9000,38 @@ public class Battle extends EngineState<Battle> {
     //LAB_800f9578
     //LAB_800f957c
     return damage;
+  }
+
+  private void postIncomingPhysicalCueFromMovement(
+    final ScriptState<BattleEntity27c> attackerState,
+    final int defenderIndex,
+    final int movementTicks
+  ) {
+    if(attackerState != this.currentTurnBent_800c66c8
+      || attackerState == this.earlyPhysicalCueTurn
+      || !(attackerState.innerStruct_00 instanceof final MonsterBattleEntity attacker)
+      || defenderIndex < 0) {
+      return;
+    }
+
+    final BattleEntity27c defender = SCRIPTS.getObject(defenderIndex, BattleEntity27c.class);
+    if(!(defender instanceof PlayerBattleEntity)) {
+      return;
+    }
+
+    this.earlyPhysicalCueTurn = attackerState;
+
+    // The movement duration is the earliest reliable piece of attack-specific
+    // timing we have. Give the overlay a small strike-animation allowance so
+    // its spiral remains visible through the approach and closes near impact.
+    final int suggestedImpactTicks = java.lang.Math.max(12, movementTicks + 8);
+    EVENTS.postEvent(new IncomingAttackCueEvent(
+      this,
+      attacker,
+      defender,
+      AttackType.PHYSICAL,
+      suggestedImpactTicks
+    ));
   }
 
   @ScriptDescription("Checks if a battle entity's physical attack hits another battle entity")
