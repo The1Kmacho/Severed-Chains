@@ -76,6 +76,7 @@ import legend.game.combat.types.PerfectDragoonAdditionEffect30;
 import legend.game.combat.types.PerfectDragoonAdditionEffectGlyph06;
 import legend.game.combat.types.VertexDifferenceAnimation18;
 import legend.game.modding.coremod.CoreMod;
+import legend.game.modding.events.characters.DragoonAdditionCompletedEvent;
 import legend.game.scripting.FlowControl;
 import legend.game.scripting.RunningScript;
 import legend.game.scripting.ScriptDescription;
@@ -105,6 +106,7 @@ import java.util.Arrays;
 import java.util.function.BiFunction;
 
 import static legend.core.GameEngine.CONFIG;
+import static legend.core.GameEngine.EVENTS;
 import static legend.core.GameEngine.GPU;
 import static legend.core.GameEngine.GTE;
 import static legend.core.GameEngine.PLATFORM;
@@ -1412,6 +1414,16 @@ public final class SEffe {
 
         //LAB_80108614
         if(daddy.ticksUntilDeallocationAfterCompletion_0e != 0) {
+          if(!daddy.completionEventPosted) {
+            daddy.completionEventPosted = true;
+            EVENTS.postEvent(new DragoonAdditionCompletedEvent(
+              (Battle)currentEngineState_8004dd04,
+              daddy.charId_18,
+              java.lang.Math.max(0, daddyHitsCompleted_80119f40),
+              daddy.totalPressCount_14
+            ));
+          }
+
           daddy.ticksUntilDeallocationAfterCompletion_0e--;
 
           if(daddy.ticksUntilDeallocationAfterCompletion_0e == 0) {

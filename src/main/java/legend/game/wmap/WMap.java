@@ -33,6 +33,7 @@ import legend.game.inventory.WhichMenu;
 import legend.game.modding.coremod.CoreEngineStateTypes;
 import legend.game.modding.coremod.CoreMod;
 import legend.game.modding.events.worldmap.WorldMapEncounterEvent;
+import legend.game.modding.events.worldmap.WorldMapCharacterModelEvent;
 import legend.game.saves.SavedGame;
 import legend.game.sound.SoundFile;
 import legend.game.sound.SoundFileIndices;
@@ -1848,14 +1849,48 @@ public class WMap extends EngineState<WMap> {
 
   @Method(0x800d5a30L)
   private void loadPlayerCharModelFiles(final List<FileData> files) {
-    this.modelAndAnimData_800c66a8.playerModelTmdFileData_b4[0].extendedTmd_00 = new CContainer("Player model", files.get(0));
+    final CharacterData2c character = gameState_800babc8.getCharacterBySlot(0);
+    final CContainer originalModel = new CContainer("Player model", files.get(0));
+    final Tim originalTexture = new Tim(files.get(1));
+    final TmdAnimationFile[] animations = new TmdAnimationFile[3];
 
-    for(int i = 0; i < 3; i++) {
-      this.modelAndAnimData_800c66a8.playerModelTmdFileData_b4[0].tmdAnim_08[i] = new TmdAnimationFile(files.get(2 + i));
+    for(int i = 0; i < animations.length; i++) {
+      animations[i] = new TmdAnimationFile(files.get(2 + i));
+      this.modelAndAnimData_800c66a8.playerModelTmdFileData_b4[0].tmdAnim_08[i] = animations[i];
+    }
+
+    final WorldMapCharacterModelEvent event = EVENTS.postEvent(
+      new WorldMapCharacterModelEvent(character, originalModel, originalTexture, animations)
+    );
+
+    final int replacementPartCount = event.model.tmdPtr_00.tmd.header.nobj;
+    boolean compatible = true;
+    for(int i = 0; i < animations.length; i++) {
+      if(animations[i].modelPartCount_0c != replacementPartCount) {
+        LOGGER.warn(
+          "World-map model replacement rejected for %s: model parts=%d, animation %d parts=%d",
+          character.template.getRegistryId(),
+          replacementPartCount,
+          i,
+          animations[i].modelPartCount_0c
+        );
+        compatible = false;
+      }
+    }
+
+    final CContainer model = compatible ? event.model : originalModel;
+    final Tim tim = compatible ? event.texture : originalTexture;
+    this.modelAndAnimData_800c66a8.playerModelTmdFileData_b4[0].extendedTmd_00 = model;
+
+    if(compatible && model != originalModel) {
+      LOGGER.info(
+        "World-map model replacement accepted for %s: %d parts",
+        character.template.getRegistryId(),
+        replacementPartCount
+      );
     }
 
     final UvAdjustmentMetrics14 vramSlot = tmdUvAdjustmentMetrics_800eee48[playerAvatarVramSlots_800ef694[0]];
-    final Tim tim = new Tim(files.get(1));
     final Rect4i originalImage = tim.getImageRect();
     final Rect4i originalClut = tim.getClutRect();
     final Rect4i image = new Rect4i(vramSlot.tpageX, vramSlot.tpageY, originalImage.w, originalImage.h);

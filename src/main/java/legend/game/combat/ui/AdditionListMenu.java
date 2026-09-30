@@ -6,6 +6,7 @@ import legend.game.combat.bent.PlayerBattleEntity;
 import legend.game.inventory.screens.FontOptions;
 import legend.game.inventory.screens.HorizontalAlign;
 import legend.game.inventory.screens.TextColour;
+import legend.game.modding.events.characters.AdditionDescriptionEvent;
 import legend.game.scripting.RunningScript;
 import legend.game.ui.UiBox;
 import org.legendofdragoon.modloader.registries.RegistryId;
@@ -14,6 +15,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 import static legend.core.GameEngine.CONFIG;
+import static legend.core.GameEngine.EVENTS;
 import static legend.core.GameEngine.REGISTRIES;
 import static legend.game.Text.renderText;
 import static legend.lodmod.LodConfig.UI_BACKGROUND_COLOUR;
@@ -122,14 +124,19 @@ public class AdditionListMenu extends ListMenu {
 
         //Selected item description
         if(this.description == null) {
-          this.description = new UiBox(44, 156, 232, 14);
+          this.description = new UiBox(44, 150, 232, 26);
         }
 
         this.description.render(CONFIG.getConfig(UI_BACKGROUND_COLOUR.get()));
 
         this.fontOptions.trim(0);
         this.fontOptions.horizontalAlign(HorizontalAlign.CENTRE);
-        renderText("Hits: " + addition.getHitCount(this.player_08.character, additionInfo) + ", damage: " + damage + ", SP: " + sp, 160, 157, this.fontOptions);
+        renderText("Hits: " + addition.getHitCount(this.player_08.character, additionInfo) + ", damage: " + damage + ", SP: " + sp, 160, 151, this.fontOptions);
+
+        final AdditionDescriptionEvent descriptionEvent = EVENTS.postEvent(new AdditionDescriptionEvent(this.player_08.character, addition));
+        if(descriptionEvent.description != null && !descriptionEvent.description.isBlank()) {
+          renderText(descriptionEvent.description, 160, 162, this.fontOptions);
+        }
       }
     }
   }

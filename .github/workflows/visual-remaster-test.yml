@@ -1,4 +1,4 @@
-name: Visual Remaster Development Build
+name: Combined Development Build
 
 on:
   push:
@@ -42,7 +42,7 @@ jobs:
         shell: pwsh
         run: |
           @"
-          Severed Chains - Visual Remaster Development Build
+          Severed Chains - Combined Development Build
 
           Branch: $env:GITHUB_REF_NAME
           Commit: $env:GITHUB_SHA
@@ -55,14 +55,19 @@ jobs:
           5. In Options > Postprocessing, enable "Visual Remaster".
           6. Keep CRT Enabled off when testing the remaster renderer.
 
+          INCLUDED MODS
+          - mods/visual-remaster.jar
+          - mods/gameplay-overhaul.jar
+          - mods/field-battle-models.jar
+
           This artifact is produced only from the development branch.
-          Work-in-progress commits stay on visual-remaster until a milestone is ready for testing.
+          Feature work remains isolated on its work branches until intentionally integrated.
           "@ | Set-Content -Path build\libs\VISUAL_REMASTER_TESTING.txt
 
       - name: Upload runnable Windows development build
         uses: actions/upload-artifact@v4
         with:
-          name: Severed-Chains-Visual-Remaster-Windows
+          name: Severed-Chains-Combined-Development-Windows
           path: build/libs/
           if-no-files-found: error
           retention-days: 14
