@@ -41,7 +41,8 @@ public final class ParryTimingOverlayEffect implements Effect<EffectManagerParam
   @Override
   public void render(final ScriptState<EffectManagerData6c<EffectManagerParams.VoidType>> state) {
     final float overlayScale = CONFIG.getConfig(CoreMod.ADDITION_OVERLAY_SIZE_CONFIG.get());
-    final int approachTicks = java.lang.Math.max(1, this.expectedImpactTicks - this.parryWindowTicks);
+    final int approachTicks = java.lang.Math.max(1, this.expectedImpactTicks);
+    final int windowStartTick = java.lang.Math.max(0, this.expectedImpactTicks - this.parryWindowTicks);
     final float progress = java.lang.Math.min(1.0f, this.age / (float)approachTicks);
 
     final float movingSize = (START_SIZE + (TARGET_SIZE - START_SIZE) * progress) * overlayScale;
@@ -62,8 +63,9 @@ public final class ParryTimingOverlayEffect implements Effect<EffectManagerParam
     RENDERER.queueOrthoModel(RENDERER.lineBoxBPlusF, this.transforms, QueuedModelStandard.class)
       .colour(r, g, b);
 
-    // On calibrated attacks this begins exactly PARRY_WINDOW_TICKS before impact.
-    if(this.age >= approachTicks) {
+    // The square reaches the target at the retail damage-resolution moment.
+    // The subtle fill begins during the actual accepted parry window.
+    if(this.age >= windowStartTick) {
       this.transforms.scaling(targetSize - 4.0f * overlayScale, targetSize - 4.0f * overlayScale, 1.0f);
       this.transforms.transfer.set(GPU.getOffsetX(), GPU.getOffsetY() + 30.0f, 119.0f);
       RENDERER.queueOrthoModel(RENDERER.centredQuadBPlusF, this.transforms, QueuedModelStandard.class)
