@@ -93,6 +93,16 @@ public final class GameplayOverhaulMod {
       return;
     }
 
+    // Enemy melee scripts often hit the normal hit-check only a few ticks
+    // before damage. If an earlier movement cue already started this exact
+    // attack, the hit-check is only confirmation and must not restart the
+    // spiral or camera.
+    if(activeCueAttacker == event.attacker
+      && activeCueDefender == event.defender
+      && activeCueAttackType == event.attackType) {
+      return;
+    }
+
     finishActiveParryOverlay();
 
     activeCueAttacker = event.attacker;
@@ -102,7 +112,10 @@ public final class GameplayOverhaulMod {
     activeCueKey = attackCueKey(event.attacker, event.attackType);
     lastParryTick = Integer.MIN_VALUE;
 
-    final int expectedImpactTicks = PARRY_CUE_TIMINGS.getOrDefault(activeCueKey, DEFAULT_PARRY_CUE_TICKS);
+    final int expectedImpactTicks = PARRY_CUE_TIMINGS.getOrDefault(
+      activeCueKey,
+      event.suggestedImpactTicks > 0 ? event.suggestedImpactTicks : DEFAULT_PARRY_CUE_TICKS
+    );
     activeParryReticle = new AdditionOverlaysEffect44(
       expectedImpactTicks,
       PARRY_WINDOW_TICKS,
