@@ -18,6 +18,11 @@ public class WorldMapCharacterModelEvent extends Event {
   public CContainer model;
   public Tim texture;
   public final TmdAnimationFile[] animations;
+  /**
+   * Optional map from replacement model part index to world-map animation part index.
+   * Null requires a traditional 1:1 part-count match.
+   */
+  public int[] animationPartMap;
 
   public WorldMapCharacterModelEvent(
     final CharacterData2c character,
