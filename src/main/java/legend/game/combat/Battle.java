@@ -114,6 +114,7 @@ import legend.game.modding.events.battle.CombatantModelLoadedEvent;
 import legend.game.modding.events.battle.EnemyRewardsEvent;
 import legend.game.modding.events.battle.LoadDeffEvent;
 import legend.game.modding.events.battle.LoadEnemyEvent;
+import legend.game.modding.events.battle.IncomingAttackTimingEvent;
 import legend.game.modding.events.battle.MonsterStatsEvent;
 import legend.game.scripting.FlowControl;
 import legend.game.scripting.Param;
@@ -168,6 +169,8 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+import java.util.IdentityHashMap;
+import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Consumer;
@@ -405,6 +408,12 @@ public class Battle extends EngineState<Battle> {
   private int loadingStage;
 
   private int currentPostCombatActionFrame_800c6690;
+
+  /**
+   * Per-script countdown used by IncomingAttackTimingEvent. Identity semantics
+   * keep simultaneous enemy scripts independent without consuming script storage slots.
+   */
+  private final Map<ScriptState<?>, Integer> incomingAttackDelays = new IdentityHashMap<>();
 
   private final CombatantStruct1a8[] combatants_8005e398 = new CombatantStruct1a8[10];
   /** The number of {@link #combatants_8005e398}s */
@@ -8610,6 +8619,10 @@ public class Battle extends EngineState<Battle> {
     final BattleEntity27c attacker = SCRIPTS.getObject(script.params_20[0].get(), BattleEntity27c.class);
     final BattleEntity27c defender = SCRIPTS.getObject(script.params_20[1].get(), BattleEntity27c.class);
 
+    if(this.delayIncomingAttack(script, attacker, defender, AttackType.PHYSICAL)) {
+      return FlowControl.PAUSE_AND_REWIND;
+    }
+
     this.hud.currentAttackElements.clear();
     this.hud.currentAttackElements.add(ELEMENT_ICON_PHYSICAL.get());
     if(attacker instanceof final PlayerBattleEntity player) {
@@ -8636,6 +8649,10 @@ public class Battle extends EngineState<Battle> {
   public FlowControl scriptDragoonMagicStatusItemAttack(final RunningScript<?> script) {
     final BattleEntity27c attacker = SCRIPTS.getObject(script.params_20[0].get(), BattleEntity27c.class);
     final BattleEntity27c defender = SCRIPTS.getObject(script.params_20[1].get(), BattleEntity27c.class);
+
+    if(this.delayIncomingAttack(script, attacker, defender, AttackType.DRAGOON_MAGIC_STATUS_ITEMS)) {
+      return FlowControl.PAUSE_AND_REWIND;
+    }
 
     attacker.clearTempWeaponAndSpellStats();
     attacker.setActiveSpell(script.params_20[2].get());
@@ -8673,6 +8690,10 @@ public class Battle extends EngineState<Battle> {
     final BattleEntity27c attacker = SCRIPTS.getObject(script.params_20[0].get(), BattleEntity27c.class);
     final BattleEntity27c defender = SCRIPTS.getObject(script.params_20[1].get(), BattleEntity27c.class);
 
+    if(this.delayIncomingAttack(script, attacker, defender, AttackType.ITEM_MAGIC)) {
+      return FlowControl.PAUSE_AND_REWIND;
+    }
+
     attacker.spell_94 = null;
 
     int damage = this.calculateMagicDamage(attacker, defender, 0);
@@ -8696,6 +8717,34 @@ public class Battle extends EngineState<Battle> {
     script.params_20[4].set(this.determineAttackSpecialEffects(attacker, defender, AttackType.ITEM_MAGIC));
     this.applyItemSpecialEffects(attacker, defender);
     return FlowControl.CONTINUE;
+  }
+
+  private boolean delayIncomingAttack(
+    final RunningScript<?> script,
+    final BattleEntity27c attacker,
+    final BattleEntity27c defender,
+    final AttackType attackType
+  ) {
+    final ScriptState<?> state = script.scriptState_04;
+    final Integer remaining = this.incomingAttackDelays.get(state);
+
+    if(remaining != null) {
+      if(remaining > 0) {
+        this.incomingAttackDelays.put(state, remaining - 1);
+        return true;
+      }
+
+      this.incomingAttackDelays.remove(state);
+      return false;
+    }
+
+    final IncomingAttackTimingEvent event = EVENTS.postEvent(new IncomingAttackTimingEvent(this, attacker, defender, attackType));
+    if(event.delayTicks > 0) {
+      this.incomingAttackDelays.put(state, event.delayTicks - 1);
+      return true;
+    }
+
+    return false;
   }
 
   @ScriptDescription("Gives SP to a battle entity")
