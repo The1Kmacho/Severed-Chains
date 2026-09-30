@@ -1,11 +1,5 @@
 package legend.gameplayoverhaul;
 
-import legend.core.platform.input.ButtonInputActivation;
-import legend.core.platform.input.InputAction;
-import legend.core.platform.input.InputActionRegistryEvent;
-import legend.core.platform.input.InputButton;
-import legend.core.platform.input.InputKey;
-import legend.core.platform.input.ScancodeInputActivation;
 import legend.game.additions.Addition;
 import legend.game.characters.CharacterAdditionInfo;
 import legend.game.characters.Element;
@@ -18,33 +12,29 @@ import legend.game.combat.bent.AttackSpecialEffectEvent;
 import legend.game.combat.bent.BattleEntity27c;
 import legend.game.combat.bent.MonsterBattleEntity;
 import legend.game.combat.bent.PlayerBattleEntity;
+import legend.game.combat.effects.AdditionOverlaysEffect44;
 import legend.game.combat.effects.GenericAttachment1c;
 import legend.game.combat.effects.GuardEffect06;
 import legend.game.combat.types.AttackType;
-import legend.game.modding.events.battle.IncomingAttackTimingEvent;
+import legend.game.modding.events.battle.BattleIntroCameraEvent;
+import legend.game.modding.events.battle.IncomingAttackCueEvent;
 import legend.game.modding.events.characters.AdditionDescriptionEvent;
 import legend.game.modding.events.characters.DragoonAdditionCompletedEvent;
-import legend.game.modding.events.RenderEvent;
 import legend.game.modding.events.input.InputPressedEvent;
-import legend.game.modding.events.input.RegisterDefaultInputBindingsEvent;
-import legend.game.inventory.screens.FontOptions;
-import legend.game.inventory.screens.HorizontalAlign;
-import legend.game.inventory.screens.TextColour;
 import legend.lodmod.LodAdditions;
 import legend.lodmod.LodMod;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.legendofdragoon.modloader.Mod;
 import org.legendofdragoon.modloader.events.EventListener;
-import org.legendofdragoon.modloader.registries.Registrar;
-import org.legendofdragoon.modloader.registries.RegistryDelegate;
 import org.legendofdragoon.modloader.registries.RegistryId;
+import org.joml.Vector3f;
 
+import java.util.HashMap;
+import java.util.Map;
 import java.util.Set;
 
-import static legend.core.GameEngine.REGISTRIES;
 import static legend.game.EngineStates.currentEngineState_8004dd04;
-import static legend.game.Text.renderText;
 import static legend.game.Scus94491BpeSegment_8006.battleState_8006e398;
 import static legend.game.Scus94491BpeSegment_800b.gameState_800babc8;
 import static legend.game.Scus94491BpeSegment_800b.tickCount_800bb0fc;
@@ -56,36 +46,26 @@ public final class GameplayOverhaulMod {
 
   private static final Logger LOGGER = LogManager.getFormatterLogger(GameplayOverhaulMod.class);
 
-  private static final Registrar<InputAction, InputActionRegistryEvent> INPUTS =
-    new Registrar<>(REGISTRIES.inputActions, MOD_ID);
-
-  public static final RegistryDelegate<InputAction> INPUT_ACTION_DODGE =
-    INPUTS.register("bttl_dodge", InputAction::editable);
-
   private static final int PARRY_WINDOW_TICKS = 4;
-  private static final int PARRY_CUE_TICKS = 14;
-  private static final int DODGE_WINDOW_TICKS = 8;
+  private static final int DEFAULT_PARRY_CUE_TICKS = 18;
   private static final int GUARD_ANIMATION_INDEX = 5;
   private static final int PARRY_GUARD_EFFECT_TICKS = 12;
 
   private static int lastParryTick = Integer.MIN_VALUE;
-  private static int lastDodgeTick = Integer.MIN_VALUE;
   private static int negatedAttackTick = Integer.MIN_VALUE;
   private static BattleEntity27c negatedDefender;
 
-  private static final int FEEDBACK_TICKS = 18;
-  private static int feedbackTicks;
-  private static FeedbackType feedbackType = FeedbackType.NONE;
-  private static final FontOptions FEEDBACK_FONT = new FontOptions()
-    .horizontalAlign(HorizontalAlign.CENTRE)
-    .shadowColour(TextColour.BLACK)
-    .size(0.95f);
-
-  private enum FeedbackType {
-    NONE,
-    PARRY,
-    DODGE
-  }
+  private static final Map<String, Integer> PARRY_CUE_TIMINGS = new HashMap<>();
+  private static BattleEntity27c activeCueAttacker;
+  private static BattleEntity27c activeCueDefender;
+  private static AttackType activeCueAttackType;
+  private static int activeCueStartTick = Integer.MIN_VALUE;
+  private static String activeCueKey;
+  private static legend.game.scripting.ScriptState<?> activeParryOverlay;
+  private static AdditionOverlaysEffect44 activeParryReticle;
+  private static final Vector3f savedCameraViewpoint = new Vector3f();
+  private static final Vector3f savedCameraRefpoint = new Vector3f();
+  private static boolean parryCameraActive;
 
   private static final Set<RegistryId> FINAL_ADDITIONS = Set.of(
     LodAdditions.BLAZING_DYNAMO.getId(),
@@ -100,70 +80,71 @@ public final class GameplayOverhaulMod {
   public GameplayOverhaulMod() { }
 
   @EventListener
-  public static void registerInputActions(final InputActionRegistryEvent event) {
-    INPUTS.registryEvent(event);
-  }
-
-  @EventListener
-  public static void registerDefaultBindings(final RegisterDefaultInputBindingsEvent event) {
-    event
-      .add(INPUT_ACTION_DODGE.get(), new ScancodeInputActivation(InputKey.C))
-      .add(INPUT_ACTION_DODGE.get(), new ButtonInputActivation(InputButton.X));
-  }
-
-  @EventListener
   public static void inputPressed(final InputPressedEvent event) {
-    if(event.repeat) {
-      return;
-    }
-
-    if(event.action == LodMod.INPUT_ACTION_BTTL_COUNTER.get()) {
+    if(!event.repeat && event.action == LodMod.INPUT_ACTION_BTTL_COUNTER.get()) {
       lastParryTick = tickCount_800bb0fc;
-    } else if(event.action == INPUT_ACTION_DODGE.get()) {
-      lastDodgeTick = tickCount_800bb0fc;
     }
   }
 
   @EventListener
-  public static void incomingAttackTiming(final IncomingAttackTimingEvent event) {
+  public static void incomingAttackCue(final IncomingAttackCueEvent event) {
     if(!(event.attacker instanceof MonsterBattleEntity)
       || !(event.defender instanceof PlayerBattleEntity)) {
       return;
     }
 
-    event.delayTicks = java.lang.Math.max(event.delayTicks, PARRY_CUE_TICKS);
-    SEffe.allocateEffectManager(
+    finishActiveParryOverlay();
+
+    activeCueAttacker = event.attacker;
+    activeCueDefender = event.defender;
+    activeCueAttackType = event.attackType;
+    activeCueStartTick = tickCount_800bb0fc;
+    activeCueKey = attackCueKey(event.attacker, event.attackType);
+    lastParryTick = Integer.MIN_VALUE;
+
+    final int expectedImpactTicks = PARRY_CUE_TIMINGS.getOrDefault(activeCueKey, DEFAULT_PARRY_CUE_TICKS);
+    activeParryReticle = new AdditionOverlaysEffect44(
+      expectedImpactTicks,
+      PARRY_WINDOW_TICKS,
+      true
+    );
+    activeParryOverlay = SEffe.allocateEffectManager(
       "GameplayOverhaulParryTiming",
       null,
-      new ParryTimingOverlayEffect(PARRY_CUE_TICKS, PARRY_WINDOW_TICKS)
+      activeParryReticle
     );
+
+    focusParryCamera((PlayerBattleEntity)event.defender);
+  }
+
+  @EventListener
+  public static void battleIntroCamera(final BattleIntroCameraEvent event) {
+    // Camera scripts 0-31 are the standard battle-intro showcase set. Higher
+    // indices are encounter-specific scripted openings. Explicit intro waits
+    // likewise indicate bespoke staging (for example the Divine Dragon).
+    event.skipStandardIntro =
+      event.encounter.introWaitTicks == 0
+        && event.encounter.playerOpeningCamera < 32
+        && event.encounter.monsterOpeningCamera < 32;
   }
 
   @EventListener
   public static void attack(final AttackEvent event) {
     if(event.attacker instanceof MonsterBattleEntity && event.defender instanceof PlayerBattleEntity) {
       final int now = tickCount_800bb0fc;
+      final boolean cueMatches = finishParryCue(event.attacker, event.defender, event.attackType, now);
       final int parryAge = now - lastParryTick;
-      final int dodgeAge = now - lastDodgeTick;
 
-      if(parryAge >= 0 && parryAge <= PARRY_WINDOW_TICKS) {
+      if(cueMatches && parryAge >= 0 && parryAge <= PARRY_WINDOW_TICKS) {
         event.damage = 0;
         lastParryTick = Integer.MIN_VALUE;
         markNegatedAttack(event.defender);
         playParryReaction((PlayerBattleEntity)event.defender);
-        showFeedback(FeedbackType.PARRY);
         LOGGER.info("[Gameplay Overhaul] PARRY");
         return;
       }
 
-      if(dodgeAge >= 0 && dodgeAge <= DODGE_WINDOW_TICKS) {
-        event.damage = 0;
-        lastDodgeTick = Integer.MIN_VALUE;
-        markNegatedAttack(event.defender);
-        showFeedback(FeedbackType.DODGE);
-        LOGGER.info("[Gameplay Overhaul] DODGE");
-        return;
-      }
+      lastParryTick = Integer.MIN_VALUE;
     }
 
     if(!(event.attacker instanceof final PlayerBattleEntity player)
@@ -185,29 +166,6 @@ public final class GameplayOverhaulMod {
 
     final int percent = isFinal(player.addition) ? 25 : 10;
     addElementalBonus(event, player.getElement(), percent);
-  }
-
-  @EventListener
-  public static void renderFeedback(final RenderEvent event) {
-    if(feedbackTicks <= 0 || !(currentEngineState_8004dd04 instanceof Battle)) {
-      return;
-    }
-
-    final float progress = feedbackTicks / (float)FEEDBACK_TICKS;
-    FEEDBACK_FONT.size(0.85f + progress * 0.25f);
-
-    if(feedbackType == FeedbackType.PARRY) {
-      FEEDBACK_FONT.colour(TextColour.RED);
-      renderText("COUNTER!", 160.0f, 64.0f, FEEDBACK_FONT);
-    } else if(feedbackType == FeedbackType.DODGE) {
-      FEEDBACK_FONT.colour(TextColour.CYAN);
-      renderText("DODGE!", 160.0f, 64.0f, FEEDBACK_FONT);
-    }
-
-    feedbackTicks--;
-    if(feedbackTicks == 0) {
-      feedbackType = FeedbackType.NONE;
-    }
   }
 
   @EventListener
@@ -302,9 +260,135 @@ public final class GameplayOverhaulMod {
     }
   }
 
-  private static void showFeedback(final FeedbackType type) {
-    feedbackType = type;
-    feedbackTicks = FEEDBACK_TICKS;
+  private static String attackCueKey(final BattleEntity27c attacker, final AttackType attackType) {
+    final int animationIndex =
+      attacker.currentAnimIndex_270 >= 0
+        ? attacker.currentAnimIndex_270
+        : attacker.loadingAnimIndex_26e;
+    return attacker.charId_272 + ":" + animationIndex + ":" + attackType.name();
+  }
+
+  private static boolean finishParryCue(
+    final BattleEntity27c attacker,
+    final BattleEntity27c defender,
+    final AttackType attackType,
+    final int impactTick
+  ) {
+    if(activeCueAttacker != attacker
+      || activeCueDefender != defender
+      || activeCueAttackType != attackType) {
+      return false;
+    }
+
+    final int measuredTicks = java.lang.Math.max(1, impactTick - activeCueStartTick);
+    if(activeCueKey != null) {
+      PARRY_CUE_TIMINGS.merge(
+        activeCueKey,
+        measuredTicks,
+        (oldValue, newValue) -> java.lang.Math.max(
+          PARRY_WINDOW_TICKS + 1,
+          java.lang.Math.round(oldValue * 0.75f + newValue * 0.25f)
+        )
+      );
+    }
+
+    if(activeParryReticle != null) {
+      final int parryAge = impactTick - lastParryTick;
+      activeParryReticle.completeVisualOnly(parryAge >= 0 && parryAge <= PARRY_WINDOW_TICKS);
+    }
+
+    // The effect owns its two-frame success/failure flash from here; clear our
+    // bookkeeping so the next attack never tries to deallocate an old state.
+    activeParryOverlay = null;
+    activeParryReticle = null;
+    restoreParryCamera();
+    activeCueAttacker = null;
+    activeCueDefender = null;
+    activeCueAttackType = null;
+    activeCueStartTick = Integer.MIN_VALUE;
+    activeCueKey = null;
+    return true;
+  }
+
+  private static void finishActiveParryOverlay() {
+    if(activeParryOverlay != null) {
+      activeParryOverlay.deallocateWithChildren();
+      activeParryOverlay = null;
+    }
+    activeParryReticle = null;
+    restoreParryCamera();
+  }
+
+  private static void focusParryCamera(final PlayerBattleEntity defender) {
+    if(!(currentEngineState_8004dd04 instanceof final Battle battle)) {
+      return;
+    }
+
+    final var camera = battle.camera_800c67f0;
+    savedCameraViewpoint.set(camera.rview2_00.viewpoint_00);
+    savedCameraRefpoint.set(camera.rview2_00.refpoint_0c);
+    parryCameraActive = true;
+
+    // Match the Addition presentation idea: keep combat moving, but quickly
+    // bring the camera's focus onto the character about to receive the hit.
+    camera.cameraMoveRefpoint(
+      6,
+      0.0f,
+      -defender.middleOffsetY_86 * 50.0f,
+      0.0f,
+      0,
+      6,
+      0,
+      defender
+    );
+
+    // Pull the viewpoint partway toward the same target while preserving the
+    // current battle-camera side. This produces the same "commit to the hit"
+    // feeling as an Addition without pausing the enemy animation.
+    final Vector3f target = new Vector3f(defender.getPosition())
+      .add(0.0f, -defender.middleOffsetY_86 * 50.0f, 0.0f);
+    final Vector3f view = new Vector3f(savedCameraViewpoint);
+    view.lerp(target, 0.28f);
+    camera.cameraMoveViewpoint(
+      0,
+      view.x,
+      view.y - 180.0f,
+      view.z,
+      0,
+      6,
+      0,
+      null
+    );
+  }
+
+  private static void restoreParryCamera() {
+    if(!parryCameraActive || !(currentEngineState_8004dd04 instanceof final Battle battle)) {
+      parryCameraActive = false;
+      return;
+    }
+
+    final var camera = battle.camera_800c67f0;
+    camera.cameraMoveViewpoint(
+      0,
+      savedCameraViewpoint.x,
+      savedCameraViewpoint.y,
+      savedCameraViewpoint.z,
+      0,
+      6,
+      0,
+      null
+    );
+    camera.cameraMoveRefpoint(
+      0,
+      savedCameraRefpoint.x,
+      savedCameraRefpoint.y,
+      savedCameraRefpoint.z,
+      0,
+      6,
+      0,
+      null
+    );
+    parryCameraActive = false;
   }
 
   private static boolean isFinal(final Addition addition) {

@@ -73,19 +73,18 @@ public class AdditionOverlaysEffect44 implements Effect<EffectManagerParams.Void
   public Obj reticleBorderShadow;
   public final MV transforms = new MV();
 
+  /** Standalone retail-style reticle used by systems such as incoming-attack parries. */
+  private boolean visualOnlyCounter;
+  private byte[] visualOnlyCompletionState;
+  private int visualOnlyWindowStart;
+  private int visualOnlyImpactFrame;
+  private int visualOnlyCompletionFrames;
+
   @Method(0x801062a8L)
   public AdditionOverlaysEffect44(final int attackerScriptIndex, final int targetScriptIndex, final int autoCompleteType) {
     final BattleEntity27c s5 = SCRIPTS.getObject(attackerScriptIndex, BattleEntity27c.class);
 
-    this.reticleBorderShadow = new QuadBuilder("Reticle background")
-      .translucency(Translucency.B_MINUS_F)
-      .monochrome(0, 0.0f)
-      .monochrome(1, 0.0f)
-      .monochrome(2, 1.0f)
-      .monochrome(3, 1.0f)
-      .pos(-1.0f, -0.5f, 0.0f)
-      .size(1.0f, 1.0f)
-      .build();
+    this.reticleBorderShadow = createReticleBorderShadow();
 
     //LAB_8010633c
     //LAB_80106374
@@ -186,6 +185,121 @@ public class AdditionOverlaysEffect44 implements Effect<EffectManagerParams.Void
         val++;
       }
     }
+  }
+
+  /**
+   * Creates one visual-only counter reticle using the exact retail Addition
+   * border renderer. targetFrame is the expected natural damage-impact frame.
+   */
+  public AdditionOverlaysEffect44(final int targetFrame, final int successFrames, final boolean counterStyle) {
+    this.reticleBorderShadow = createReticleBorderShadow();
+    this.visualOnlyCounter = true;
+    this.count_30 = 1;
+    this.currentFrame_34 = 0;
+    this.pauseTickerAndRenderer_31 = 0;
+    this.additionComplete_32 = 0;
+    this.hitOverlays_40 = new AdditionOverlaysHit20[] {new AdditionOverlaysHit20(0)};
+    this.visualOnlyCompletionState = new byte[] {0};
+    this.visualOnlyImpactFrame = java.lang.Math.max(1, targetFrame);
+    this.visualOnlyWindowStart = java.lang.Math.max(
+      1,
+      this.visualOnlyImpactFrame - java.lang.Math.max(1, successFrames) + 1
+    );
+
+    final AdditionOverlaysHit20 hitOverlay = this.hitOverlays_40[0];
+    hitOverlay.unused_00 = 1;
+    hitOverlay.hitSuccessful_01 = false;
+    hitOverlay.shadowColour_08 = 0;
+    hitOverlay.frameSuccessLowerBound_10 = this.visualOnlyWindowStart;
+    hitOverlay.frameSuccessUpperBound_12 = this.visualOnlyImpactFrame;
+    hitOverlay.numSuccessFrames_0e = java.lang.Math.max(1, successFrames);
+    hitOverlay.borderColoursArrayIndex_02 = 3;
+    hitOverlay.isCounter_1c = counterStyle;
+
+    if(Config.changeAdditionOverlayRgb()) {
+      final int counterRgb = Config.getCounterOverlayRgb();
+      final int additionRgb = Config.getAdditionOverlayRgb();
+      additionBorderColours_800fb7f0[6] = counterRgb & 0xff;
+      additionBorderColours_800fb7f0[7] = counterRgb >> 8 & 0xff;
+      additionBorderColours_800fb7f0[8] = counterRgb >> 16 & 0xff;
+      additionBorderColours_800fb7f0[9] = additionRgb & 0xff;
+      additionBorderColours_800fb7f0[10] = additionRgb >> 8 & 0xff;
+      additionBorderColours_800fb7f0[11] = additionRgb >> 16 & 0xff;
+    }
+
+    final float scale = CONFIG.getConfig(CoreMod.ADDITION_OVERLAY_SIZE_CONFIG.get());
+    final AdditionOverlaysBorder0e[] borderArray = hitOverlay.borderArray_18;
+
+    int val = 16;
+    for(int borderNum = 0; borderNum < 17; borderNum++) {
+      final AdditionOverlaysBorder0e borderOverlay = borderArray[borderNum];
+      borderOverlay.size_08 = (18 - val) * 10 * 1.5f * scale;
+      borderOverlay.isVisible_00 = true;
+
+      if(!CONFIG.getConfig(REDUCE_MOTION_FLASHING_CONFIG.get())) {
+        borderOverlay.angleModifier_02 = Math.toRadians((16 - val) * 11.25f);
+      }
+
+      borderOverlay.countFramesVisible_0c = 5;
+      borderOverlay.sideEffects_0d = 0;
+      borderOverlay.framesUntilRender_0a =
+        java.lang.Math.max(0, this.visualOnlyImpactFrame + val - 17);
+      borderOverlay.r_04 = additionBorderColours_800fb7f0[9];
+      borderOverlay.g_05 = additionBorderColours_800fb7f0[10];
+      borderOverlay.b_06 = additionBorderColours_800fb7f0[11];
+      val--;
+    }
+
+    val = 0;
+    for(int borderNum = 16; borderNum >= 14; borderNum--) {
+      final AdditionOverlaysBorder0e borderOverlay = borderArray[borderNum];
+      borderOverlay.size_08 = (20 - val * 2) * 1.5f * scale;
+      borderOverlay.angleModifier_02 = 0.0f;
+      borderOverlay.countFramesVisible_0c = 0x11;
+      borderOverlay.framesUntilRender_0a =
+        java.lang.Math.max(0, this.visualOnlyImpactFrame - 17);
+
+      if(val != 1) {
+        borderOverlay.r_04 = 0x30;
+        borderOverlay.g_05 = 0x30;
+        borderOverlay.b_06 = 0x30;
+        borderOverlay.sideEffects_0d = 1;
+      } else {
+        borderOverlay.sideEffects_0d = -1;
+      }
+
+      val++;
+    }
+  }
+
+  private static Obj createReticleBorderShadow() {
+    return new QuadBuilder("Reticle background")
+      .translucency(Translucency.B_MINUS_F)
+      .monochrome(0, 0.0f)
+      .monochrome(1, 0.0f)
+      .monochrome(2, 1.0f)
+      .monochrome(3, 1.0f)
+      .pos(-1.0f, -0.5f, 0.0f)
+      .size(1.0f, 1.0f)
+      .build();
+  }
+
+  /** Finishes a visual-only reticle at the natural impact frame. */
+  public void completeVisualOnly(final boolean successful) {
+    if(!this.visualOnlyCounter) {
+      return;
+    }
+
+    this.visualOnlyCompletionState[0] = (byte)(successful ? 1 : -2);
+    this.visualOnlyCompletionFrames = 2;
+  }
+
+  private byte getCompletionState(final int hitNum) {
+    if(this.visualOnlyCounter) {
+      return this.visualOnlyCompletionState[hitNum];
+    }
+
+    return additionHitCompletionState_8011a014[hitNum];
   }
 
   public void setContinuationState(final int continuationState) {
@@ -351,7 +465,7 @@ public class AdditionOverlaysEffect44 implements Effect<EffectManagerParams.Void
   @Method(0x80106cccL)
   private void renderAdditionBorders(final int hitNum, final AdditionOverlaysHit20[] hitArray) {
     final AdditionOverlaysBorder0e[] borderArray = hitArray[hitNum].borderArray_18;
-    final byte currentHitCompletionState = additionHitCompletionState_8011a014[hitNum];
+    final byte currentHitCompletionState = this.getCompletionState(hitNum);
 
     //LAB_80106d18
     for(int borderNum = 0; borderNum < 17; borderNum++) {
@@ -418,7 +532,7 @@ public class AdditionOverlaysEffect44 implements Effect<EffectManagerParams.Void
     }
 
     //LAB_801070ec
-    final byte currentHitCompletionState = additionHitCompletionState_8011a014[hitNum];
+    final byte currentHitCompletionState = this.getCompletionState(hitNum);
     final AdditionOverlaysBorder0e[] borderArray = hitOverlay.borderArray_18;
     int isRendered = 0;
 
@@ -494,6 +608,20 @@ public class AdditionOverlaysEffect44 implements Effect<EffectManagerParams.Void
   @Method(0x801073d4L)
   public void tick(final ScriptState<EffectManagerData6c<EffectManagerParams.VoidType>> state) {
     final EffectManagerData6c<EffectManagerParams.VoidType> manager = state.innerStruct_00;
+
+    if(this.visualOnlyCounter) {
+      this.currentFrame_34++;
+      this.tickBorderDisplay(0, this.hitOverlays_40);
+
+      if(this.visualOnlyCompletionFrames > 0) {
+        this.visualOnlyCompletionFrames--;
+        if(this.visualOnlyCompletionFrames == 0) {
+          state.deallocateWithChildren();
+        }
+      }
+
+      return;
+    }
 
     if(this.pauseTickerAndRenderer_31 == 0) {
       final AdditionOverlaysHit20[] hitArray = this.hitOverlays_40;
@@ -628,6 +756,32 @@ public class AdditionOverlaysEffect44 implements Effect<EffectManagerParams.Void
   @Method(0x8010726cL)
   public void render(final ScriptState<EffectManagerData6c<EffectManagerParams.VoidType>> state) {
     final EffectManagerData6c<EffectManagerParams.VoidType> manager = state.innerStruct_00;
+
+    if(this.visualOnlyCounter) {
+      if(manager.params_10.flags_00 >= 0) {
+        final AdditionOverlaysHit20 hitOverlay = this.hitOverlays_40[0];
+
+        if(CONFIG.getConfig(CoreMod.ADDITION_OVERLAY_CONFIG.get()) == AdditionOverlayMode.FULL) {
+          this.renderAdditionBorders(0, this.hitOverlays_40);
+        }
+
+        if(CONFIG.getConfig(CoreMod.ADDITION_OVERLAY_CONFIG.get()) != AdditionOverlayMode.OFF) {
+          if(this.visualOnlyCompletionFrames > 0) {
+            this.renderAdditionCentreSolidSquare(
+              this,
+              hitOverlay,
+              this.visualOnlyCompletionState[0],
+              manager
+            );
+          } else if(this.currentFrame_34 >= this.visualOnlyWindowStart
+            && this.currentFrame_34 <= this.visualOnlyImpactFrame) {
+            this.renderAdditionCentreSolidSquare(this, hitOverlay, -2, manager);
+          }
+        }
+      }
+
+      return;
+    }
 
     if(this.pauseTickerAndRenderer_31 != 1) {
       if(manager.params_10.flags_00 >= 0) {

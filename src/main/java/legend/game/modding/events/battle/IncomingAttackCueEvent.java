@@ -6,19 +6,17 @@ import legend.game.combat.bent.BattleEvent;
 import legend.game.combat.types.AttackType;
 
 /**
- * Fired immediately before an attack is resolved. Mods may request a short
- * script delay to present a timing prompt before damage and special effects are
- * calculated.
+ * Fired when an attack has passed its normal hit check but before the attack
+ * script reaches damage resolution. This event never pauses or alters the
+ * attack timeline; it exists so mods can present timing feedback alongside the
+ * retail animation.
  */
-public class IncomingAttackTimingEvent extends BattleEvent {
+public class IncomingAttackCueEvent extends BattleEvent {
   public final BattleEntity27c attacker;
   public final BattleEntity27c defender;
   public final AttackType attackType;
 
-  /** Number of battle ticks to wait before resolving this attack. */
-  public int delayTicks;
-
-  public IncomingAttackTimingEvent(
+  public IncomingAttackCueEvent(
     final Battle battle,
     final BattleEntity27c attacker,
     final BattleEntity27c defender,
