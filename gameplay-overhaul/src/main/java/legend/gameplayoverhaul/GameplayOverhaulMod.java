@@ -12,6 +12,7 @@ import legend.game.combat.bent.AttackSpecialEffectEvent;
 import legend.game.combat.bent.BattleEntity27c;
 import legend.game.combat.bent.MonsterBattleEntity;
 import legend.game.combat.bent.PlayerBattleEntity;
+import legend.game.combat.effects.AdditionOverlaysEffect44;
 import legend.game.combat.effects.GenericAttachment1c;
 import legend.game.combat.effects.GuardEffect06;
 import legend.game.combat.types.AttackType;
@@ -27,6 +28,7 @@ import org.apache.logging.log4j.Logger;
 import org.legendofdragoon.modloader.Mod;
 import org.legendofdragoon.modloader.events.EventListener;
 import org.legendofdragoon.modloader.registries.RegistryId;
+import org.joml.Vector3f;
 
 import java.util.HashMap;
 import java.util.Map;
@@ -60,6 +62,10 @@ public final class GameplayOverhaulMod {
   private static int activeCueStartTick = Integer.MIN_VALUE;
   private static String activeCueKey;
   private static legend.game.scripting.ScriptState<?> activeParryOverlay;
+  private static AdditionOverlaysEffect44 activeParryReticle;
+  private static final Vector3f savedCameraViewpoint = new Vector3f();
+  private static final Vector3f savedCameraRefpoint = new Vector3f();
+  private static boolean parryCameraActive;
 
   private static final Set<RegistryId> FINAL_ADDITIONS = Set.of(
     LodAdditions.BLAZING_DYNAMO.getId(),
@@ -97,11 +103,18 @@ public final class GameplayOverhaulMod {
     lastParryTick = Integer.MIN_VALUE;
 
     final int expectedImpactTicks = PARRY_CUE_TIMINGS.getOrDefault(activeCueKey, DEFAULT_PARRY_CUE_TICKS);
+    activeParryReticle = new AdditionOverlaysEffect44(
+      expectedImpactTicks,
+      PARRY_WINDOW_TICKS,
+      true
+    );
     activeParryOverlay = SEffe.allocateEffectManager(
       "GameplayOverhaulParryTiming",
       null,
-      new ParryTimingOverlayEffect(expectedImpactTicks, PARRY_WINDOW_TICKS)
+      activeParryReticle
     );
+
+    focusParryCamera((PlayerBattleEntity)event.defender);
   }
 
   @EventListener
@@ -279,7 +292,11 @@ public final class GameplayOverhaulMod {
       );
     }
 
-    finishActiveParryOverlay();
+    if(activeParryReticle != null) {
+      final int parryAge = impactTick - lastParryTick;
+      activeParryReticle.completeVisualOnly(parryAge >= 0 && parryAge <= PARRY_WINDOW_TICKS);
+    }
+    restoreParryCamera();
     activeCueAttacker = null;
     activeCueDefender = null;
     activeCueAttackType = null;
@@ -293,6 +310,79 @@ public final class GameplayOverhaulMod {
       activeParryOverlay.deallocateWithChildren();
       activeParryOverlay = null;
     }
+    activeParryReticle = null;
+    restoreParryCamera();
+  }
+
+  private static void focusParryCamera(final PlayerBattleEntity defender) {
+    if(!(currentEngineState_8004dd04 instanceof final Battle battle)) {
+      return;
+    }
+
+    final var camera = battle.camera_800c67f0;
+    savedCameraViewpoint.set(camera.rview2_00.viewpoint_00);
+    savedCameraRefpoint.set(camera.rview2_00.refpoint_0c);
+    parryCameraActive = true;
+
+    // Match the Addition presentation idea: keep combat moving, but quickly
+    // bring the camera's focus onto the character about to receive the hit.
+    camera.cameraMoveRefpoint(
+      6,
+      0.0f,
+      -defender.middleOffsetY_86 * 0.5f,
+      0.0f,
+      0,
+      6,
+      0,
+      defender
+    );
+
+    // Pull the viewpoint partway toward the same target while preserving the
+    // current battle-camera side. This produces the same "commit to the hit"
+    // feeling as an Addition without pausing the enemy animation.
+    final Vector3f target = defender.getPosition();
+    final Vector3f view = new Vector3f(savedCameraViewpoint);
+    view.lerp(target, 0.28f);
+    camera.cameraMoveViewpoint(
+      0,
+      view.x,
+      view.y - 180.0f,
+      view.z,
+      0,
+      6,
+      0,
+      null
+    );
+  }
+
+  private static void restoreParryCamera() {
+    if(!parryCameraActive || !(currentEngineState_8004dd04 instanceof final Battle battle)) {
+      parryCameraActive = false;
+      return;
+    }
+
+    final var camera = battle.camera_800c67f0;
+    camera.cameraMoveViewpoint(
+      0,
+      savedCameraViewpoint.x,
+      savedCameraViewpoint.y,
+      savedCameraViewpoint.z,
+      0,
+      6,
+      0,
+      null
+    );
+    camera.cameraMoveRefpoint(
+      0,
+      savedCameraRefpoint.x,
+      savedCameraRefpoint.y,
+      savedCameraRefpoint.z,
+      0,
+      6,
+      0,
+      null
+    );
+    parryCameraActive = false;
   }
 
   private static boolean isFinal(final Addition addition) {
