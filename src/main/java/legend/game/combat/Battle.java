@@ -425,6 +425,8 @@ public class Battle extends EngineState<Battle> {
   private final Object usedMonsterTextureSlotsLock = new Object();
   private int usedMonsterTextureSlots_800c66c4;
   public ScriptState<? extends BattleEntity27c> currentTurnBent_800c66c8;
+  /** Current monster turn that has already emitted its early physical parry cue. */
+  private ScriptState<? extends BattleEntity27c> earlyPhysicalCueTurn;
   private int mcqBaseOffsetX_800c66cc;
 
   private boolean shouldRenderMcq_800c66d4;
@@ -9004,6 +9006,7 @@ public class Battle extends EngineState<Battle> {
     final int movementTicks
   ) {
     if(attackerState != this.currentTurnBent_800c66c8
+      || attackerState == this.earlyPhysicalCueTurn
       || !(attackerState.innerStruct_00 instanceof final MonsterBattleEntity attacker)
       || defenderIndex < 0) {
       return;
@@ -9013,6 +9016,8 @@ public class Battle extends EngineState<Battle> {
     if(!(defender instanceof PlayerBattleEntity)) {
       return;
     }
+
+    this.earlyPhysicalCueTurn = attackerState;
 
     // The movement duration is the earliest reliable piece of attack-specific
     // timing we have. Give the overlay a small strike-animation allowance so
