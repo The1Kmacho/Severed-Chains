@@ -245,7 +245,11 @@ public final class Models {
       final GsCOORDINATE2 coord2 = model.modelParts_00[i].coord2_04;
       final Transforms params = coord2.transforms;
 
-      params.quat.set(model.keyframes_90[model.currentKeyframe_94][animationPart].quat);
+      model.applyAnimationRotationCorrection(
+        i,
+        model.keyframes_90[model.currentKeyframe_94][animationPart].quat,
+        params.quat
+      );
       params.trans.set(model.keyframes_90[model.currentKeyframe_94][animationPart].translate_06);
 
       coord2.coord.rotation(params.quat);
@@ -270,7 +274,12 @@ public final class Models {
 
       final float interpolationScale = (model.subFrameIndex + 1.0f) / framesPerKeyframe;
       params.trans.lerp(model.keyframes_90[model.currentKeyframe_94][animationPart].translate_06, interpolationScale, coord2.coord.transfer);
-      params.quat.nlerp(model.keyframes_90[model.currentKeyframe_94][animationPart].quat, interpolationScale, params.quat);
+      final org.joml.Quaternionf correctedTarget = model.applyAnimationRotationCorrection(
+        i,
+        model.keyframes_90[model.currentKeyframe_94][animationPart].quat,
+        new org.joml.Quaternionf()
+      );
+      params.quat.nlerp(correctedTarget, interpolationScale, params.quat);
       coord2.coord.rotation(params.quat);
       if(model.geometryScale != 1.0f) {
         coord2.coord.scale(model.geometryScale);
