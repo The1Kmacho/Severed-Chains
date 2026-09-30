@@ -26,6 +26,8 @@ public class SubmapObjectAssetsEvent extends InGameEvent<SMap> implements Loaded
    * Null means traditional 1:1 model/animation parts.
    */
   public int[] animationPartMap;
+  /** Uniform local geometry scale for replacement model parts. */
+  public float geometryScale = 1.0f;
 
   public SubmapObjectAssetsEvent(
     final SMap engineState,
