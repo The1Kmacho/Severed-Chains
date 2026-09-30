@@ -249,6 +249,9 @@ public final class Models {
       params.trans.set(model.keyframes_90[model.currentKeyframe_94][animationPart].translate_06);
 
       coord2.coord.rotation(params.quat);
+      if(model.geometryScale != 1.0f) {
+        coord2.coord.scale(model.geometryScale);
+      }
       coord2.coord.transfer.set(params.trans);
     }
   }
@@ -269,6 +272,9 @@ public final class Models {
       params.trans.lerp(model.keyframes_90[model.currentKeyframe_94][animationPart].translate_06, interpolationScale, coord2.coord.transfer);
       params.quat.nlerp(model.keyframes_90[model.currentKeyframe_94][animationPart].quat, interpolationScale, params.quat);
       coord2.coord.rotation(params.quat);
+      if(model.geometryScale != 1.0f) {
+        coord2.coord.scale(model.geometryScale);
+      }
     }
   }
 
