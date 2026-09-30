@@ -219,6 +219,48 @@ tasks.register('copyVisualRemasterAssets', Copy) {
   into layout.buildDirectory.dir('libs/mods/visual_remaster')
 }
 
+// Gameplay overhaul lives as a standalone mod JAR. Core changes are limited
+// to generic combat/UI events consumed by the mod.
+tasks.register('compileGameplayOverhaul', JavaCompile) {
+  dependsOn tasks.named('classes')
+  source = fileTree('gameplay-overhaul/src/main/java') {
+    include '**/*.java'
+  }
+  classpath = sourceSets.main.output + configurations.compileClasspath
+  destinationDirectory = layout.buildDirectory.dir('classes/java/gameplayOverhaul')
+  sourceCompatibility = JavaVersion.VERSION_25
+  targetCompatibility = JavaVersion.VERSION_25
+  options.encoding = 'UTF-8'
+}
+
+tasks.register('gameplayOverhaulJar', Jar) {
+  dependsOn tasks.named('compileGameplayOverhaul')
+  archiveFileName = 'gameplay-overhaul.jar'
+  destinationDirectory = layout.buildDirectory.dir('libs/mods')
+  from layout.buildDirectory.dir('classes/java/gameplayOverhaul')
+}
+
+// Field battle-model reuse is also packaged as a standalone mod. Core changes
+// are limited to generic world-map model replacement hooks.
+tasks.register('compileFieldBattleModels', JavaCompile) {
+  dependsOn tasks.named('classes')
+  source = fileTree('field-battle-models/src/main/java') {
+    include '**/*.java'
+  }
+  classpath = sourceSets.main.output + configurations.compileClasspath
+  destinationDirectory = layout.buildDirectory.dir('classes/java/fieldBattleModels')
+  sourceCompatibility = JavaVersion.VERSION_25
+  targetCompatibility = JavaVersion.VERSION_25
+  options.encoding = 'UTF-8'
+}
+
+tasks.register('fieldBattleModelsJar', Jar) {
+  dependsOn tasks.named('compileFieldBattleModels')
+  archiveFileName = 'field-battle-models.jar'
+  destinationDirectory = layout.buildDirectory.dir('libs/mods')
+  from layout.buildDirectory.dir('classes/java/fieldBattleModels')
+}
+
 tasks.register('clearOutput', Delete) {
   delete layout.buildDirectory.dir("libs/libs")
   delete layout.buildDirectory.file("libs/**")
@@ -300,7 +342,7 @@ tasks.register('copySupportFiles', Copy) {
 }
 
 jar.dependsOn(clearOutput, copyLibs, copySupportFiles, updaterJar, copyUpdaterConfig)
-jar.finalizedBy tasks.named('copyVisualRemasterAssets')
+jar.finalizedBy tasks.named('copyVisualRemasterAssets'), tasks.named('gameplayOverhaulJar'), tasks.named('fieldBattleModelsJar')
 
 publishing {
   publications {
