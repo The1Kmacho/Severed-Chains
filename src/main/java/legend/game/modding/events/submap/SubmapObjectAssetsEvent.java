@@ -8,6 +8,7 @@ import legend.game.types.GameState52c;
 import legend.game.types.TmdAnimationFile;
 
 import java.util.List;
+import org.joml.Quaternionf;
 
 /**
  * Fired after a retail submap object's model/animations/texture have been resolved,
@@ -26,6 +27,8 @@ public class SubmapObjectAssetsEvent extends InGameEvent<SMap> implements Loaded
    * Null means traditional 1:1 model/animation parts.
    */
   public int[] animationPartMap;
+  /** Optional per-model-part bind rotation corrections. */
+  public Quaternionf[] animationRotationCorrections;
   /** Uniform local geometry scale for replacement model parts. */
   public float geometryScale = 1.0f;
 
