@@ -2359,6 +2359,7 @@ public class Battle extends EngineState<Battle> {
         if(this.forcedTurnBent_800c66bc != null) { // A bent has a forced turn
           this.forcedTurnBent_800c66bc.clearFlag(FLAG_TAKE_FORCED_TURN).setFlag(FLAG_RELOAD_BATTLE_ACTIONS).setFlag(FLAG_CURRENT_TURN);
           this.currentTurnBent_800c66c8 = this.forcedTurnBent_800c66bc;
+          this.earlyPhysicalCueTurn = null;
 
           LOGGER.info(BATTLE, "Bent %s (%s) forced turn start", this.currentTurnBent_800c66c8.innerStruct_00.getName(), this.currentTurnBent_800c66c8.name);
           EVENTS.postEvent(new BattleEntityTurnEvent<>(this, encounter, this.forcedTurnBent_800c66bc));
@@ -2368,6 +2369,7 @@ public class Battle extends EngineState<Battle> {
           if(battleState_8006e398.hasAliveMonsters()) { // Monsters alive, calculate next bent turn
             //LAB_800c7d3c
             this.currentTurnBent_800c66c8 = battleState_8006e398.getCurrentTurnBent();
+            this.earlyPhysicalCueTurn = null;
             this.currentTurnBent_800c66c8.setFlag(FLAG_RELOAD_BATTLE_ACTIONS).setFlag(FLAG_CURRENT_TURN);
 
             LOGGER.info(BATTLE, "Bent %s (%s) turn start", this.currentTurnBent_800c66c8.innerStruct_00.getName(), this.currentTurnBent_800c66c8.name);
