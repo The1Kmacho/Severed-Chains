@@ -296,6 +296,11 @@ public final class GameplayOverhaulMod {
       final int parryAge = impactTick - lastParryTick;
       activeParryReticle.completeVisualOnly(parryAge >= 0 && parryAge <= PARRY_WINDOW_TICKS);
     }
+
+    // The effect owns its two-frame success/failure flash from here; clear our
+    // bookkeeping so the next attack never tries to deallocate an old state.
+    activeParryOverlay = null;
+    activeParryReticle = null;
     restoreParryCamera();
     activeCueAttacker = null;
     activeCueDefender = null;
