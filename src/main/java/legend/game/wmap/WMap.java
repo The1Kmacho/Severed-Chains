@@ -1910,6 +1910,7 @@ public class WMap extends EngineState<WMap> {
     final PlayerModelTmdFileData playerData = this.modelAndAnimData_800c66a8.playerModelTmdFileData_b4[0];
     playerData.extendedTmd_00 = model;
     playerData.animationPartMap = compatible ? event.animationPartMap : null;
+    playerData.geometryScale = compatible ? event.geometryScale : 1.0f;
 
     if(compatible && model != originalModel) {
       LOGGER.info(
@@ -3143,6 +3144,7 @@ public class WMap extends EngineState<WMap> {
 
       //LAB_800dfcc0
       model.animationPartMap = modelAndAnimData.playerModelTmdFileData_b4[i].animationPartMap;
+      model.geometryScale = modelAndAnimData.playerModelTmdFileData_b4[i].geometryScale;
       initModel(model, modelAndAnimData.playerModelTmdFileData_b4[i].extendedTmd_00, modelAndAnimData.playerModelTmdFileData_b4[i].tmdAnim_08[0]);
       loadModelStandardAnimation(model, modelAndAnimData.playerModelTmdFileData_b4[i].tmdAnim_08[0]);
 
