@@ -33,6 +33,7 @@ import legend.game.characters.StatType;
 import legend.game.characters.UnaryStat;
 import legend.game.characters.VitalsStat;
 import legend.game.combat.bent.AttackEvent;
+import legend.game.combat.bent.AttackSpecialEffectEvent;
 import legend.game.combat.bent.BattleEntity27c;
 import legend.game.combat.bent.BattleEntityStat;
 import legend.game.combat.bent.ElementIcon;
@@ -8831,7 +8832,7 @@ public class Battle extends EngineState<Battle> {
 
     //LAB_800f7fe0
     //LAB_800f7fe4
-    return effect;
+    return EVENTS.postEvent(new AttackSpecialEffectEvent(this, attacker, defender, attackType, effect)).effect;
   }
 
   @Method(0x800f84c8L)
