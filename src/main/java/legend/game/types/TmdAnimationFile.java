@@ -107,6 +107,9 @@ public class TmdAnimationFile extends Anim {
       params.trans.lerp(model.keyframes_90[nextFrame][animationPart].translate_06, interpolationScale, coord2.coord.transfer);
       params.quat.nlerp(model.keyframes_90[nextFrame][animationPart].quat, interpolationScale, params.quat);
       coord2.coord.rotation(params.quat);
+      if(model.geometryScale != 1.0f) {
+        coord2.coord.scale(model.geometryScale);
+      }
     }
   }
 }
