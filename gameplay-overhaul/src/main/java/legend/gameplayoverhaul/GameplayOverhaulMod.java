@@ -21,6 +21,7 @@ import legend.game.combat.bent.PlayerBattleEntity;
 import legend.game.combat.effects.GenericAttachment1c;
 import legend.game.combat.effects.GuardEffect06;
 import legend.game.combat.types.AttackType;
+import legend.game.modding.events.battle.IncomingAttackTimingEvent;
 import legend.game.modding.events.characters.AdditionDescriptionEvent;
 import legend.game.modding.events.characters.DragoonAdditionCompletedEvent;
 import legend.game.modding.events.RenderEvent;
@@ -62,6 +63,7 @@ public final class GameplayOverhaulMod {
     INPUTS.register("bttl_dodge", InputAction::editable);
 
   private static final int PARRY_WINDOW_TICKS = 4;
+  private static final int PARRY_CUE_TICKS = 14;
   private static final int DODGE_WINDOW_TICKS = 8;
   private static final int GUARD_ANIMATION_INDEX = 5;
   private static final int PARRY_GUARD_EFFECT_TICKS = 12;
@@ -120,6 +122,21 @@ public final class GameplayOverhaulMod {
     } else if(event.action == INPUT_ACTION_DODGE.get()) {
       lastDodgeTick = tickCount_800bb0fc;
     }
+  }
+
+  @EventListener
+  public static void incomingAttackTiming(final IncomingAttackTimingEvent event) {
+    if(!(event.attacker instanceof MonsterBattleEntity)
+      || !(event.defender instanceof PlayerBattleEntity)) {
+      return;
+    }
+
+    event.delayTicks = java.lang.Math.max(event.delayTicks, PARRY_CUE_TICKS);
+    SEffe.allocateEffectManager(
+      "GameplayOverhaulParryTiming",
+      null,
+      new ParryTimingOverlayEffect(PARRY_CUE_TICKS, PARRY_WINDOW_TICKS)
+    );
   }
 
   @EventListener
