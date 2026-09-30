@@ -12,5 +12,7 @@ public class SubmapObject {
   public ScriptFile script;
   public CContainer model;
   public final List<TmdAnimationFile> animations = new ArrayList<>();
+  /** Optional map from model part index to animation part index. */
+  public int[] animationPartMap;
   public Function<String, SubmapObject210> constructor = SubmapObject210::new;
 }
