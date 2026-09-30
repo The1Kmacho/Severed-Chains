@@ -3,6 +3,7 @@ package legend.fieldbattlemodels;
 import legend.game.modding.events.submap.SubmapObjectAssetsEvent;
 import legend.game.modding.events.worldmap.WorldMapCharacterModelEvent;
 import legend.game.tim.Tim;
+import legend.game.tmd.TmdObjTable1c;
 import legend.game.types.CContainer;
 import legend.game.unpacker.Loader;
 import legend.lodmod.LodMod;
@@ -12,6 +13,9 @@ import org.legendofdragoon.modloader.Mod;
 import org.legendofdragoon.modloader.events.EventListener;
 
 import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
 
 @Mod(id = FieldBattleModelsMod.MOD_ID, version = "^3.0.0")
 @EventListener
@@ -47,22 +51,26 @@ public final class FieldBattleModelsMod {
       final Path modelPath = Loader.resolve(Path.of("characters", "dart", "models", "combat", "32"));
       final Path texturePath = Loader.resolve(Path.of("characters", "dart", "textures", "combat"));
 
+      final CContainer fieldModel = event.model;
       final CContainer battleModel = new CContainer(
         "Field Battle Models - Dart combat model",
         Loader.loadFileSync(modelPath)
       );
       final Tim battleTexture = new Tim(Loader.loadFileSync(texturePath));
+      final float geometryScale = calculateGeometryScale(fieldModel, battleModel);
 
       event.model = battleModel;
       event.texture = battleTexture;
       event.animationPartMap = DART_BATTLE_TO_FIELD_ANIMATION.clone();
+      event.geometryScale = geometryScale;
 
       LOGGER.info(
-        "[Field Battle Models] Requested Dart battle model on world map: modelParts=%d, idle=%d, walk=%d, run=%d",
+        "[Field Battle Models] Requested Dart battle model on world map: modelParts=%d, idle=%d, walk=%d, run=%d, geometryScale=%.4f",
         battleModel.tmdPtr_00.tmd.header.nobj,
         event.animations[0].modelPartCount_0c,
         event.animations[1].modelPartCount_0c,
-        event.animations[2].modelPartCount_0c
+        event.animations[2].modelPartCount_0c,
+        geometryScale
       );
     } catch(final RuntimeException e) {
       LOGGER.error("[Field Battle Models] Failed to load Dart battle model for world map; retail field model will be used", e);
@@ -85,15 +93,18 @@ public final class FieldBattleModelsMod {
       final Path modelPath = Loader.resolve(Path.of("characters", "dart", "models", "combat", "32"));
       final Path texturePath = Loader.resolve(Path.of("characters", "dart", "textures", "combat"));
 
+      final CContainer fieldModel = event.object.model;
       final CContainer battleModel = new CContainer(
         "Field Battle Models - Dart submap combat model",
         Loader.loadFileSync(modelPath)
       );
       final Tim battleTexture = new Tim(Loader.loadFileSync(texturePath));
+      final float geometryScale = calculateGeometryScale(fieldModel, battleModel);
 
       event.object.model = battleModel;
       event.texture = battleTexture;
       event.animationPartMap = DART_BATTLE_TO_FIELD_ANIMATION.clone();
+      event.geometryScale = geometryScale;
 
       final int firstAnimParts =
         event.animations.isEmpty() || event.animations.get(0) == null
@@ -101,10 +112,11 @@ public final class FieldBattleModelsMod {
           : event.animations.get(0).modelPartCount_0c;
 
       LOGGER.info(
-        "[Field Battle Models] Replaced submap player with Dart battle model: modelParts=%d, firstAnimationParts=%d, retargetEntries=%d",
+        "[Field Battle Models] Replaced submap player with Dart battle model: modelParts=%d, firstAnimationParts=%d, retargetEntries=%d, geometryScale=%.4f",
         battleModel.tmdPtr_00.tmd.header.nobj,
         firstAnimParts,
-        DART_BATTLE_TO_FIELD_ANIMATION.length
+        DART_BATTLE_TO_FIELD_ANIMATION.length,
+        geometryScale
       );
     } catch(final RuntimeException e) {
       LOGGER.error(
@@ -112,5 +124,77 @@ public final class FieldBattleModelsMod {
         e
       );
     }
+  }
+
+  private static float calculateGeometryScale(final CContainer fieldModel, final CContainer battleModel) {
+    final List<Float> ratios = new ArrayList<>();
+
+    for(int battlePart = 0; battlePart < DART_BATTLE_TO_FIELD_ANIMATION.length; battlePart++) {
+      if(battlePart == 9 || battlePart == 14) {
+        continue;
+      }
+
+      final int fieldPart = DART_BATTLE_TO_FIELD_ANIMATION[battlePart];
+      if(fieldPart < 0
+        || fieldPart >= fieldModel.tmdPtr_00.tmd.objTable.length
+        || battlePart >= battleModel.tmdPtr_00.tmd.objTable.length) {
+        continue;
+      }
+
+      final float fieldExtent = getExtent(fieldModel.tmdPtr_00.tmd.objTable[fieldPart]);
+      final float battleExtent = getExtent(battleModel.tmdPtr_00.tmd.objTable[battlePart]);
+
+      if(fieldExtent > 0.0f && battleExtent > 0.0f) {
+        final float ratio = fieldExtent / battleExtent;
+        if(ratio > 0.05f && ratio < 2.0f) {
+          ratios.add(ratio);
+        }
+      }
+    }
+
+    if(ratios.isEmpty()) {
+      LOGGER.warn("[Field Battle Models] Could not derive Dart geometry scale; using 1.0");
+      return 1.0f;
+    }
+
+    Collections.sort(ratios);
+    final int mid = ratios.size() / 2;
+    final float median = ratios.size() % 2 == 0
+      ? (ratios.get(mid - 1) + ratios.get(mid)) * 0.5f
+      : ratios.get(mid);
+
+    LOGGER.info(
+      "[Field Battle Models] Derived Dart local geometry scale %.4f from %d shared parts",
+      median,
+      ratios.size()
+    );
+    return median;
+  }
+
+  private static float getExtent(final TmdObjTable1c part) {
+    if(part.vert_top_00.length == 0) {
+      return 0.0f;
+    }
+
+    float minX = Float.POSITIVE_INFINITY;
+    float minY = Float.POSITIVE_INFINITY;
+    float minZ = Float.POSITIVE_INFINITY;
+    float maxX = Float.NEGATIVE_INFINITY;
+    float maxY = Float.NEGATIVE_INFINITY;
+    float maxZ = Float.NEGATIVE_INFINITY;
+
+    for(final var vertex : part.vert_top_00) {
+      minX = Math.min(minX, vertex.x);
+      minY = Math.min(minY, vertex.y);
+      minZ = Math.min(minZ, vertex.z);
+      maxX = Math.max(maxX, vertex.x);
+      maxY = Math.max(maxY, vertex.y);
+      maxZ = Math.max(maxZ, vertex.z);
+    }
+
+    final float x = maxX - minX;
+    final float y = maxY - minY;
+    final float z = maxZ - minZ;
+    return (float)Math.sqrt(x * x + y * y + z * z);
   }
 }
