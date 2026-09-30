@@ -46,7 +46,7 @@ public final class GameplayOverhaulMod {
 
   private static final Logger LOGGER = LogManager.getFormatterLogger(GameplayOverhaulMod.class);
 
-  private static final int PARRY_WINDOW_TICKS = 4;
+  private static final int PARRY_WINDOW_TICKS = 2;
   private static final int DEFAULT_PARRY_CUE_TICKS = 18;
   private static final int GUARD_ANIMATION_INDEX = 5;
   private static final int PARRY_GUARD_EFFECT_TICKS = 12;
@@ -127,7 +127,7 @@ public final class GameplayOverhaulMod {
       activeParryReticle
     );
 
-    focusParryCamera((PlayerBattleEntity)event.defender);
+    focusParryCamera(event.attacker);
   }
 
   @EventListener
@@ -332,7 +332,7 @@ public final class GameplayOverhaulMod {
     restoreParryCamera();
   }
 
-  private static void focusParryCamera(final PlayerBattleEntity defender) {
+  private static void focusParryCamera(final BattleEntity27c attacker) {
     if(!(currentEngineState_8004dd04 instanceof final Battle battle)) {
       return;
     }
@@ -342,35 +342,42 @@ public final class GameplayOverhaulMod {
     savedCameraRefpoint.set(camera.rview2_00.refpoint_0c);
     parryCameraActive = true;
 
-    // Match the Addition presentation idea: keep combat moving, but quickly
-    // bring the camera's focus onto the character about to receive the hit.
-    camera.cameraMoveRefpoint(
-      6,
+    // Follow the attacking enemy instead of locking onto the defender. Callback
+    // 22 is the camera's accelerated translation-relative-to-object path, so
+    // the target continues moving with the enemy throughout its approach.
+    final float attackerTorsoY = -attacker.middleOffsetY_86 * 50.0f;
+    camera.cameraAccelerateRefpoint(
+      22,
       0.0f,
-      -defender.middleOffsetY_86 * 50.0f,
+      attackerTorsoY,
+      0.0f,
+      6,
+      0,
       0.0f,
       0,
-      6,
-      0,
-      defender
+      attacker
     );
 
-    // Pull the viewpoint partway toward the same target while preserving the
-    // current battle-camera side. This produces the same "commit to the hit"
-    // feeling as an Addition without pausing the enemy animation.
-    final Vector3f target = new Vector3f(defender.getPosition())
-      .add(0.0f, -defender.middleOffsetY_86 * 50.0f, 0.0f);
-    final Vector3f view = new Vector3f(savedCameraViewpoint);
-    view.lerp(target, 0.28f);
-    camera.cameraMoveViewpoint(
-      0,
-      view.x,
-      view.y - 180.0f,
-      view.z,
-      0,
+    // Preserve the existing camera side, but ease the viewpoint inward toward
+    // the attacker. Using the accelerated relative-object path gives the zoom
+    // an interpolated ease-in rather than the previous constant linear step.
+    final Vector3f attackerTarget = new Vector3f(attacker.getPosition())
+      .add(0.0f, attackerTorsoY, 0.0f);
+    final Vector3f desiredView = new Vector3f(savedCameraViewpoint)
+      .lerp(attackerTarget, 0.28f);
+    desiredView.y -= 180.0f;
+
+    final Vector3f relativeView = desiredView.sub(attacker.getPosition());
+    camera.cameraAccelerateViewpoint(
+      22,
+      relativeView.x,
+      relativeView.y,
+      relativeView.z,
       6,
       0,
-      null
+      0.0f,
+      0,
+      attacker
     );
   }
 
@@ -381,23 +388,27 @@ public final class GameplayOverhaulMod {
     }
 
     final var camera = battle.camera_800c67f0;
-    camera.cameraMoveViewpoint(
-      0,
+
+    // Ease back to the pre-attack framing as well, avoiding a linear snap-out.
+    camera.cameraAccelerateViewpoint(
+      16,
       savedCameraViewpoint.x,
       savedCameraViewpoint.y,
       savedCameraViewpoint.z,
-      0,
       6,
+      0,
+      0.0f,
       0,
       null
     );
-    camera.cameraMoveRefpoint(
-      0,
+    camera.cameraAccelerateRefpoint(
+      16,
       savedCameraRefpoint.x,
       savedCameraRefpoint.y,
       savedCameraRefpoint.z,
-      0,
       6,
+      0,
+      0.0f,
       0,
       null
     );

@@ -432,9 +432,6 @@ public class Battle extends EngineState<Battle> {
   private boolean shouldRenderMcq_800c66d4;
 
   private ScriptFile playerBattleScript_800c66fc;
-  /** Generic intro camera commands are snapped to their targets instead of animated. */
-  private boolean snapStandardIntroCamera;
-
   public int cameraScriptSubtableJumpIndex_800c6700;
   public int cameraScriptSubtableJumpIndex_800c6704;
 
@@ -2335,7 +2332,6 @@ public class Battle extends EngineState<Battle> {
     if(this.battleInitialCameraMovementFinished_800c66a8) {
       battleFlags_800bc960 |= 0x10;
       battleState_8006e398.calculateInitialTurnValues();
-      this.snapStandardIntroCamera = false;
       this.loadingStage++;
     }
   }
@@ -5321,10 +5317,6 @@ public class Battle extends EngineState<Battle> {
     return FlowControl.CONTINUE;
   }
 
-  private boolean shouldSnapStandardIntroCamera(final RunningScript<?> script) {
-    return this.snapStandardIntroCamera && script.scriptState_04 == this.scriptState_800c674c;
-  }
-
   @ScriptDescription("Causes the battle camera projection plane distance to begin moving")
   @ScriptParam(direction = ScriptParam.Direction.IN, type = ScriptParam.Type.INT, name = "mode", description = "How the camera should move")
   @ScriptParam(direction = ScriptParam.Direction.IN, type = ScriptParam.Type.INT, name = "newDistance", description = "The new projection plane distance")
@@ -5340,15 +5332,6 @@ public class Battle extends EngineState<Battle> {
     LOGGER.info(CAMERA, "[CAMERA] scriptMoveCameraProjectionPlane mode=%d, new=%f, frames=%d, s4=%d", mode, newProjectionPlaneDistance, projectionPlaneChangeFrames, stepZ1);
 
     final BattleCamera cam = this.camera_800c67f0;
-    if(this.shouldSnapStandardIntroCamera(script)) {
-      setProjectionPlaneDistance(newProjectionPlaneDistance);
-      cam.projectionPlaneDistance_100 = newProjectionPlaneDistance;
-      cam.newProjectionPlaneDistance_104 = newProjectionPlaneDistance;
-      cam.projectionPlaneChangeFrames_108 = 0;
-      cam.projectionPlaneChanging_118 = false;
-      return FlowControl.CONTINUE;
-    }
-
     cam.projectionPlaneDistance_100 = getProjectionPlaneDistance();
     cam.newProjectionPlaneDistance_104 = newProjectionPlaneDistance;
     cam.projectionPlaneChanging_118 = true;
@@ -5484,12 +5467,7 @@ public class Battle extends EngineState<Battle> {
       y = MathHelper.psxDegToRad(y);
     }
 
-    final BattleObject bobj = SCRIPTS.getObject(script.params_20[7].get(), BattleObject.class);
-    if(this.shouldSnapStandardIntroCamera(script)) {
-      this.camera_800c67f0.cameraSetViewpoint(script.params_20[0].get(), x, y, z, bobj);
-    } else {
-      this.camera_800c67f0.cameraMoveViewpoint(script.params_20[0].get(), x, y, z, script.params_20[4].get(), script.params_20[5].get(), script.params_20[6].get(), bobj);
-    }
+    this.camera_800c67f0.cameraMoveViewpoint(script.params_20[0].get(), x, y, z, script.params_20[4].get(), script.params_20[5].get(), script.params_20[6].get(), SCRIPTS.getObject(script.params_20[7].get(), BattleObject.class));
     return FlowControl.CONTINUE;
   }
 
@@ -5514,12 +5492,7 @@ public class Battle extends EngineState<Battle> {
       y = MathHelper.psxDegToRad(y);
     }
 
-    final BattleObject bobj = SCRIPTS.getObject(script.params_20[7].get(), BattleObject.class);
-    if(this.shouldSnapStandardIntroCamera(script)) {
-      this.camera_800c67f0.cameraSetRefpoint(script.params_20[0].get(), x, y, z, bobj);
-    } else {
-      this.camera_800c67f0.cameraMoveRefpoint(script.params_20[0].get(), x, y, z, script.params_20[4].get(), script.params_20[5].get(), script.params_20[6].get(), bobj);
-    }
+    this.camera_800c67f0.cameraMoveRefpoint(script.params_20[0].get(), x, y, z, script.params_20[4].get(), script.params_20[5].get(), script.params_20[6].get(), SCRIPTS.getObject(script.params_20[7].get(), BattleObject.class));
     return FlowControl.CONTINUE;
   }
 
@@ -5548,12 +5521,7 @@ public class Battle extends EngineState<Battle> {
       finalStepZ = MathHelper.psxDegToRad(finalStepZ);
     }
 
-    final BattleObject bobj = SCRIPTS.getObject(script.params_20[7].get(), BattleObject.class);
-    if(this.shouldSnapStandardIntroCamera(script)) {
-      this.camera_800c67f0.cameraSetViewpoint(script.params_20[0].get(), x, y, z, bobj);
-    } else {
-      this.camera_800c67f0.FUN_800db714(script.params_20[0].get(), x, y, z, initialStepZ, finalStepZ, script.params_20[6].get(), bobj);
-    }
+    this.camera_800c67f0.FUN_800db714(script.params_20[0].get(), x, y, z, initialStepZ, finalStepZ, script.params_20[6].get(), SCRIPTS.getObject(script.params_20[7].get(), BattleObject.class));
     return FlowControl.CONTINUE;
   }
 
@@ -5582,12 +5550,7 @@ public class Battle extends EngineState<Battle> {
       finalStepZ = MathHelper.psxDegToRad(finalStepZ);
     }
 
-    final BattleObject bobj = SCRIPTS.getObject(script.params_20[7].get(), BattleObject.class);
-    if(this.shouldSnapStandardIntroCamera(script)) {
-      this.camera_800c67f0.cameraSetRefpoint(script.params_20[0].get(), x, y, z, bobj);
-    } else {
-      this.camera_800c67f0.FUN_800db828(script.params_20[0].get(), x, y, z, initialStepZ, finalStepZ, script.params_20[6].get(), bobj);
-    }
+    this.camera_800c67f0.FUN_800db828(script.params_20[0].get(), x, y, z, initialStepZ, finalStepZ, script.params_20[6].get(), SCRIPTS.getObject(script.params_20[7].get(), BattleObject.class));
     return FlowControl.CONTINUE;
   }
 
@@ -5615,12 +5578,7 @@ public class Battle extends EngineState<Battle> {
       stepZ = MathHelper.psxDegToRad(stepZ);
     }
 
-    final BattleObject bobj = SCRIPTS.getObject(script.params_20[8].get(), BattleObject.class);
-    if(this.shouldSnapStandardIntroCamera(script)) {
-      this.camera_800c67f0.cameraSetViewpoint(script.params_20[0].get(), x, y, z, bobj);
-    } else {
-      this.camera_800c67f0.cameraAccelerateViewpoint(script.params_20[0].get(), x, y, z, script.params_20[4].get(), script.params_20[5].get(), stepZ, script.params_20[7].get(), bobj);
-    }
+    this.camera_800c67f0.cameraAccelerateViewpoint(script.params_20[0].get(), x, y, z, script.params_20[4].get(), script.params_20[5].get(), stepZ, script.params_20[7].get(), SCRIPTS.getObject(script.params_20[8].get(), BattleObject.class));
     return FlowControl.CONTINUE;
   }
 
@@ -5648,12 +5606,7 @@ public class Battle extends EngineState<Battle> {
       stepZ = MathHelper.psxDegToRad(stepZ);
     }
 
-    final BattleObject bobj = SCRIPTS.getObject(script.params_20[8].get(), BattleObject.class);
-    if(this.shouldSnapStandardIntroCamera(script)) {
-      this.camera_800c67f0.cameraSetRefpoint(script.params_20[0].get(), x, y, z, bobj);
-    } else {
-      this.camera_800c67f0.cameraAccelerateRefpoint(script.params_20[0].get(), x, y, z, script.params_20[4].get(), script.params_20[5].get(), stepZ, script.params_20[7].get(), bobj);
-    }
+    this.camera_800c67f0.cameraAccelerateRefpoint(script.params_20[0].get(), x, y, z, script.params_20[4].get(), script.params_20[5].get(), stepZ, script.params_20[7].get(), SCRIPTS.getObject(script.params_20[8].get(), BattleObject.class));
     return FlowControl.CONTINUE;
   }
 
@@ -9427,13 +9380,12 @@ public class Battle extends EngineState<Battle> {
     this.currentCameraIndex_800c6780 = encounter.cameraPosIndices[this.hud.currentCameraPositionIndicesIndex_800c66b0];
 
     if(introCameraEvent.skipStandardIntro) {
-      // Do not request an opening showcase. If the controller issues camera
-      // positioning commands while the encounter wipe is still covering the
-      // scene, snap them to their final targets so combat is already framed
-      // when the wipe clears.
-      this.cameraScriptMainTableJumpIndex_800c6748 = 0;
+      // Camera script 32 is the retail standard battle-camera settle/rotate
+      // routine (requested as jump value 33 by BattleHud). Run only this small
+      // framing move while battle startup/UI proceeds, skipping the preceding
+      // enemy/player showcase entirely.
+      this.cameraScriptMainTableJumpIndex_800c6748 = 33;
       this.battleInitialCameraMovementFinished_800c66a8 = true;
-      this.snapStandardIntroCamera = true;
     } else {
       final int openingCamera;
       if((simpleRand() & 0x8000) == 0) {
@@ -9444,7 +9396,6 @@ public class Battle extends EngineState<Battle> {
 
       //LAB_801091dc
       this.cameraScriptMainTableJumpIndex_800c6748 = openingCamera + 1;
-      this.snapStandardIntroCamera = false;
     }
 
     battleFlags_800bc960 |= 0x2;
