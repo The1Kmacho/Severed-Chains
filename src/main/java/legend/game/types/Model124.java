@@ -5,6 +5,7 @@ import legend.core.gte.ModelPart10;
 import legend.game.combat.deff.Cmb;
 import legend.game.combat.deff.Lmb;
 import legend.game.tmd.UvAdjustmentMetrics14;
+import org.joml.Quaternionf;
 import org.joml.Vector3f;
 
 import java.util.Arrays;
@@ -29,6 +30,11 @@ public class Model124 {
    * Null means the traditional 1:1 mapping.
    */
   public int[] animationPartMap;
+  /**
+   * Optional per-model-part rotation correction applied after the mapped animation rotation.
+   * Used when replacement geometry has a different local bind orientation.
+   */
+  public Quaternionf[] animationRotationCorrections;
   /**
    * Uniform local scale applied to each rigid mesh part without scaling animation translations.
    * Used when replacement geometry is authored in a different local unit scale.
@@ -95,6 +101,23 @@ public class Model124 {
 
   public Model124(final String name) {
     this.name = name;
+  }
+
+  public Quaternionf applyAnimationRotationCorrection(
+    final int modelPartIndex,
+    final Quaternionf source,
+    final Quaternionf dest
+  ) {
+    dest.set(source);
+
+    if(this.animationRotationCorrections != null
+      && modelPartIndex >= 0
+      && modelPartIndex < this.animationRotationCorrections.length
+      && this.animationRotationCorrections[modelPartIndex] != null) {
+      dest.mul(this.animationRotationCorrections[modelPartIndex]);
+    }
+
+    return dest;
   }
 
   public int getAnimationPartIndex(final int modelPartIndex) {
@@ -167,6 +190,16 @@ public class Model124 {
     this.coord2_14.set(other.coord2_14);
     this.keyframes_90 = other.keyframes_90;
     this.animationPartMap = other.animationPartMap != null ? other.animationPartMap.clone() : null;
+    if(other.animationRotationCorrections != null) {
+      this.animationRotationCorrections = new Quaternionf[other.animationRotationCorrections.length];
+      for(int i = 0; i < other.animationRotationCorrections.length; i++) {
+        if(other.animationRotationCorrections[i] != null) {
+          this.animationRotationCorrections[i] = new Quaternionf(other.animationRotationCorrections[i]);
+        }
+      }
+    } else {
+      this.animationRotationCorrections = null;
+    }
     this.geometryScale = other.geometryScale;
     this.currentKeyframe_94 = other.currentKeyframe_94;
     this.partCount_98 = other.partCount_98;

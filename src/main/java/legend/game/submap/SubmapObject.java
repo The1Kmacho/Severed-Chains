@@ -7,6 +7,7 @@ import legend.game.types.TmdAnimationFile;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.function.Function;
+import org.joml.Quaternionf;
 
 public class SubmapObject {
   public ScriptFile script;
@@ -14,6 +15,7 @@ public class SubmapObject {
   public final List<TmdAnimationFile> animations = new ArrayList<>();
   /** Optional map from model part index to animation part index. */
   public int[] animationPartMap;
+  public Quaternionf[] animationRotationCorrections;
   public float geometryScale = 1.0f;
   public Function<String, SubmapObject210> constructor = SubmapObject210::new;
 }

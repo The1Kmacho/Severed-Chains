@@ -5,10 +5,12 @@ import legend.game.modding.events.worldmap.WorldMapCharacterModelEvent;
 import legend.game.tim.Tim;
 import legend.game.tmd.TmdObjTable1c;
 import legend.game.types.CContainer;
+import legend.game.types.TmdAnimationFile;
 import legend.game.unpacker.Loader;
 import legend.lodmod.LodMod;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
+import org.joml.Quaternionf;
 import org.legendofdragoon.modloader.Mod;
 import org.legendofdragoon.modloader.events.EventListener;
 
@@ -49,6 +51,7 @@ public final class FieldBattleModelsMod {
 
     try {
       final Path modelPath = Loader.resolve(Path.of("characters", "dart", "models", "combat", "32"));
+      final Path idlePath = Loader.resolve(Path.of("characters", "dart", "models", "combat", "0"));
       final Path texturePath = Loader.resolve(Path.of("characters", "dart", "textures", "combat"));
 
       final CContainer fieldModel = event.model;
@@ -56,12 +59,16 @@ public final class FieldBattleModelsMod {
         "Field Battle Models - Dart combat model",
         Loader.loadFileSync(modelPath)
       );
+      final TmdAnimationFile battleIdle = new TmdAnimationFile(Loader.loadFileSync(idlePath));
       final Tim battleTexture = new Tim(Loader.loadFileSync(texturePath));
       final float geometryScale = calculateGeometryScale(fieldModel, battleModel);
+      final Quaternionf[] rotationCorrections =
+        calculateRotationCorrections(event.animations[0], battleIdle);
 
       event.model = battleModel;
       event.texture = battleTexture;
       event.animationPartMap = DART_BATTLE_TO_FIELD_ANIMATION.clone();
+      event.animationRotationCorrections = rotationCorrections;
       event.geometryScale = geometryScale;
 
       LOGGER.info(
@@ -91,6 +98,7 @@ public final class FieldBattleModelsMod {
 
     try {
       final Path modelPath = Loader.resolve(Path.of("characters", "dart", "models", "combat", "32"));
+      final Path idlePath = Loader.resolve(Path.of("characters", "dart", "models", "combat", "0"));
       final Path texturePath = Loader.resolve(Path.of("characters", "dart", "textures", "combat"));
 
       final CContainer fieldModel = event.object.model;
@@ -98,12 +106,18 @@ public final class FieldBattleModelsMod {
         "Field Battle Models - Dart submap combat model",
         Loader.loadFileSync(modelPath)
       );
+      final TmdAnimationFile battleIdle = new TmdAnimationFile(Loader.loadFileSync(idlePath));
       final Tim battleTexture = new Tim(Loader.loadFileSync(texturePath));
       final float geometryScale = calculateGeometryScale(fieldModel, battleModel);
+      final Quaternionf[] rotationCorrections =
+        event.animations.isEmpty()
+          ? null
+          : calculateRotationCorrections(event.animations.get(0), battleIdle);
 
       event.object.model = battleModel;
       event.texture = battleTexture;
       event.animationPartMap = DART_BATTLE_TO_FIELD_ANIMATION.clone();
+      event.animationRotationCorrections = rotationCorrections;
       event.geometryScale = geometryScale;
 
       final int firstAnimParts =
@@ -124,6 +138,41 @@ public final class FieldBattleModelsMod {
         e
       );
     }
+  }
+
+  private static Quaternionf[] calculateRotationCorrections(
+    final TmdAnimationFile fieldIdle,
+    final TmdAnimationFile battleIdle
+  ) {
+    final Quaternionf[] corrections = new Quaternionf[DART_BATTLE_TO_FIELD_ANIMATION.length];
+
+    if(fieldIdle.partTransforms_10.length == 0 || battleIdle.partTransforms_10.length == 0) {
+      LOGGER.warn("[Field Battle Models] Missing idle bind pose; rotation corrections disabled");
+      return corrections;
+    }
+
+    for(int battlePart = 0; battlePart < corrections.length; battlePart++) {
+      final int fieldPart = DART_BATTLE_TO_FIELD_ANIMATION[battlePart];
+      if(fieldPart < 0
+        || fieldPart >= fieldIdle.partTransforms_10[0].length
+        || battlePart >= battleIdle.partTransforms_10[0].length) {
+        continue;
+      }
+
+      final Quaternionf fieldBind = fieldIdle.partTransforms_10[0][fieldPart].quat;
+      final Quaternionf battleBind = battleIdle.partTransforms_10[0][battlePart].quat;
+
+      corrections[battlePart] = new Quaternionf(fieldBind)
+        .invert()
+        .mul(battleBind)
+        .normalize();
+    }
+
+    LOGGER.info(
+      "[Field Battle Models] Derived Dart bind rotation corrections for %d battle parts",
+      corrections.length
+    );
+    return corrections;
   }
 
   private static float calculateGeometryScale(final CContainer fieldModel, final CContainer battleModel) {

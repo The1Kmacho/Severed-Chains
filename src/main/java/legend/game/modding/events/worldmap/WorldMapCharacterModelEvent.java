@@ -4,6 +4,7 @@ import legend.game.characters.CharacterData2c;
 import legend.game.tim.Tim;
 import legend.game.types.CContainer;
 import legend.game.types.TmdAnimationFile;
+import org.joml.Quaternionf;
 import org.legendofdragoon.modloader.events.Event;
 
 /**
@@ -23,6 +24,8 @@ public class WorldMapCharacterModelEvent extends Event {
    * Null requires a traditional 1:1 part-count match.
    */
   public int[] animationPartMap;
+  /** Optional per-model-part bind rotation corrections. */
+  public Quaternionf[] animationRotationCorrections;
   /** Uniform local geometry scale for replacement model parts. */
   public float geometryScale = 1.0f;
 
