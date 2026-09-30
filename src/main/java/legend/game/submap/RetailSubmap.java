@@ -630,6 +630,7 @@ public class RetailSubmap extends Submap {
       }
 
       object.animationPartMap = event.animationPartMap;
+      object.geometryScale = event.geometryScale;
     }
 
     this.loadTextureOverrides();
