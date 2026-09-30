@@ -12,11 +12,14 @@ import legend.game.characters.Element;
 import legend.game.characters.UnaryStatModConfig;
 import legend.game.characters.VitalsStat;
 import legend.game.combat.Battle;
+import legend.game.combat.SEffe;
 import legend.game.combat.bent.AttackEvent;
 import legend.game.combat.bent.AttackSpecialEffectEvent;
 import legend.game.combat.bent.BattleEntity27c;
 import legend.game.combat.bent.MonsterBattleEntity;
 import legend.game.combat.bent.PlayerBattleEntity;
+import legend.game.combat.effects.GenericAttachment1c;
+import legend.game.combat.effects.GuardEffect06;
 import legend.game.combat.types.AttackType;
 import legend.game.modding.events.characters.AdditionDescriptionEvent;
 import legend.game.modding.events.characters.DragoonAdditionCompletedEvent;
@@ -60,6 +63,8 @@ public final class GameplayOverhaulMod {
 
   private static final int PARRY_WINDOW_TICKS = 4;
   private static final int DODGE_WINDOW_TICKS = 8;
+  private static final int GUARD_ANIMATION_INDEX = 5;
+  private static final int PARRY_GUARD_EFFECT_TICKS = 12;
 
   private static int lastParryTick = Integer.MIN_VALUE;
   private static int lastDodgeTick = Integer.MIN_VALUE;
@@ -128,6 +133,7 @@ public final class GameplayOverhaulMod {
         event.damage = 0;
         lastParryTick = Integer.MIN_VALUE;
         markNegatedAttack(event.defender);
+        playParryReaction((PlayerBattleEntity)event.defender);
         showFeedback(FeedbackType.PARRY);
         LOGGER.info("[Gameplay Overhaul] PARRY");
         return;
@@ -291,6 +297,74 @@ public final class GameplayOverhaulMod {
   private static void markNegatedAttack(final BattleEntity27c defender) {
     negatedDefender = defender;
     negatedAttackTick = tickCount_800bb0fc;
+  }
+
+  private static void playParryReaction(final PlayerBattleEntity defender) {
+    if(!(currentEngineState_8004dd04 instanceof final Battle battle)) {
+      return;
+    }
+
+    // Retail guard uses animation 5 for normal-form characters. Dragoons skip
+    // that animation in the retail damage script, so mirror that behavior here.
+    if(!defender.isDragoon()) {
+      playGuardAnimation(battle, defender);
+    }
+
+    spawnParryGuardEffect(defender);
+  }
+
+  private static void playGuardAnimation(final Battle battle, final PlayerBattleEntity defender) {
+    if(defender.combatant_144 == null || defender.combatant_144.assets_14[GUARD_ANIMATION_INDEX] == null) {
+      LOGGER.warn("[Gameplay Overhaul] Guard animation is unavailable for %s", defender);
+      return;
+    }
+
+    if(!defender.combatant_144.isAssetLoaded(GUARD_ANIMATION_INDEX)) {
+      battle.FUN_800c9e10(defender.combatant_144, GUARD_ANIMATION_INDEX);
+    }
+
+    if(!defender.combatant_144.isAssetLoaded(GUARD_ANIMATION_INDEX)) {
+      LOGGER.warn("[Gameplay Overhaul] Guard animation did not load for %s", defender);
+      return;
+    }
+
+    final int previousAnimation = defender.loadingAnimIndex_26e;
+    if(previousAnimation >= 0
+      && previousAnimation < defender.combatant_144.assets_14.length
+      && defender.combatant_144.assets_14[previousAnimation] != null) {
+      Battle.FUN_800ca194(defender.combatant_144.assets_14[previousAnimation]);
+    }
+
+    defender.getState().clearFlag(BattleEntity27c.FLAG_ANIMATE_ONCE);
+    battle.loadAnimationAssetIntoModel(defender.model_148, defender.combatant_144, GUARD_ANIMATION_INDEX);
+    defender.model_148.animationState_9c = 1;
+    defender.loadingAnimIndex_26e = GUARD_ANIMATION_INDEX;
+    defender.currentAnimIndex_270 = -1;
+    defender.getState().setFlag(BattleEntity27c.FLAG_ANIMATE_ONCE);
+  }
+
+  private static void spawnParryGuardEffect(final PlayerBattleEntity defender) {
+    final var effectState = SEffe.allocateEffectManager(
+      "GameplayOverhaulParryGuard",
+      null,
+      new GuardEffect06()
+    );
+    final var manager = effectState.innerStruct_00;
+
+    // Same family of shield effect used by retail Guard, but with the magical
+    // shield's blue palette so a successful parry reads differently at a glance.
+    manager.params_10.colour_1c.set(0x19, 0x82, 0xfd);
+    manager.params_10.scale_16.set(-0.375f, 0.75f, 0.75f);
+    manager.params_10.trans_04.set(0.0f, -768.0f, -512.0f);
+    defender.getRelativePosition(manager.params_10.trans_04);
+
+    final GenericAttachment1c lifespan = manager.addAttachment(
+      0,
+      0,
+      SEffe::tickLifespanAttachment,
+      new GenericAttachment1c()
+    );
+    lifespan.ticksRemaining_1a = PARRY_GUARD_EFFECT_TICKS;
   }
 
   private static void addElementalBonus(final AttackEvent event, final Element element, final int percent) {
