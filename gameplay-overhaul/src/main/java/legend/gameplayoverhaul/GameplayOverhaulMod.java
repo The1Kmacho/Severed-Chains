@@ -334,7 +334,7 @@ public final class GameplayOverhaulMod {
     camera.cameraMoveRefpoint(
       6,
       0.0f,
-      -defender.middleOffsetY_86 * 0.5f,
+      -defender.middleOffsetY_86 * 50.0f,
       0.0f,
       0,
       6,
@@ -345,7 +345,8 @@ public final class GameplayOverhaulMod {
     // Pull the viewpoint partway toward the same target while preserving the
     // current battle-camera side. This produces the same "commit to the hit"
     // feeling as an Addition without pausing the enemy animation.
-    final Vector3f target = defender.getPosition();
+    final Vector3f target = new Vector3f(defender.getPosition())
+      .add(0.0f, -defender.middleOffsetY_86 * 50.0f, 0.0f);
     final Vector3f view = new Vector3f(savedCameraViewpoint);
     view.lerp(target, 0.28f);
     camera.cameraMoveViewpoint(
