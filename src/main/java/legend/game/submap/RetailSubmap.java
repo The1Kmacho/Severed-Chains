@@ -27,6 +27,7 @@ import legend.game.modding.events.submap.SubmapEncounterEvent;
 import legend.game.modding.events.submap.SubmapEncounterRateEvent;
 import legend.game.modding.events.submap.SubmapEnvironmentTextureEvent;
 import legend.game.modding.events.submap.SubmapObjectTextureEvent;
+import legend.game.modding.events.submap.SubmapObjectAssetsEvent;
 import legend.game.scripting.ScriptFile;
 import legend.game.sound.SoundFile;
 import legend.game.sound.SoundFileIndices;
@@ -615,6 +616,20 @@ public class RetailSubmap extends Submap {
       if(this.pxls.get(i) == null && textures.get(i) != null) {
         this.pxls.set(i, this.pxls.get(textures.get(i).realFileIndex()));
       }
+    }
+
+    for(int i = 0; i < this.objects.size(); i++) {
+      final SubmapObject object = this.objects.get(i);
+      final Tim texture = i < this.pxls.size() ? this.pxls.get(i) : null;
+      final SubmapObjectAssetsEvent event = EVENTS.postEvent(
+        new SubmapObjectAssetsEvent(this.smap, gameState_800babc8, i, object, texture)
+      );
+
+      if(event.texture != null && i < this.pxls.size()) {
+        this.pxls.set(i, event.texture);
+      }
+
+      object.animationPartMap = event.animationPartMap;
     }
 
     this.loadTextureOverrides();

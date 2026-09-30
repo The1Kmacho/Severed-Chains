@@ -93,13 +93,19 @@ public class TmdAnimationFile extends Anim {
   private void applyInterpolationFrame(final Model124 model, final int framesPerKeyframe) {
     //LAB_80021404
     for(int i = 0; i < model.modelParts_00.length; i++) {
+      final int animationPart = model.getAnimationPartIndex(i);
+      final int nextFrame = Math.min(model.currentKeyframe_94 + 1, model.keyframes_90.length - 1);
+      if(animationPart < 0 || animationPart >= model.keyframes_90[nextFrame].length) {
+        continue;
+      }
+
       final GsCOORDINATE2 coord2 = model.modelParts_00[i].coord2_04;
       final Transforms params = coord2.transforms;
 
       // Differs from standard applyInterpolationFrame by considering frame 0 the keyframe
       final float interpolationScale = (float)model.subFrameIndex / framesPerKeyframe;
-      params.trans.lerp(model.keyframes_90[Math.min(model.currentKeyframe_94 + 1, model.keyframes_90.length - 1)][i].translate_06, interpolationScale, coord2.coord.transfer);
-      params.quat.nlerp(model.keyframes_90[Math.min(model.currentKeyframe_94 + 1, model.keyframes_90.length - 1)][i].quat, interpolationScale, params.quat);
+      params.trans.lerp(model.keyframes_90[nextFrame][animationPart].translate_06, interpolationScale, coord2.coord.transfer);
+      params.quat.nlerp(model.keyframes_90[nextFrame][animationPart].quat, interpolationScale, params.quat);
       coord2.coord.rotation(params.quat);
     }
   }
