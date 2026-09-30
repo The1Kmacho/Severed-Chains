@@ -2,11 +2,13 @@ package legend.game.wmap;
 
 import legend.game.types.CContainer;
 import legend.game.types.TmdAnimationFile;
+import org.joml.Quaternionf;
 
 public class PlayerModelTmdFileData {
   public CContainer extendedTmd_00;
   /** Optional map from model part index to world-map animation part index. */
   public int[] animationPartMap;
+  public Quaternionf[] animationRotationCorrections;
   public float geometryScale = 1.0f;
 //  public long unknownFile_04; // This was a TOD, but unused by the game. One for each wmap model, files 5714.1, 5715.1, 5716.1, 5717.1
   public final TmdAnimationFile[] tmdAnim_08 = new TmdAnimationFile[14];
