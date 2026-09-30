@@ -1,9 +1,6 @@
 name: Field Battle Models Development Build
 
 on:
-  push:
-    branches:
-      - field-battle-models-development
   workflow_dispatch:
 
 permissions:
