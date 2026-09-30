@@ -105,7 +105,12 @@ public class TmdAnimationFile extends Anim {
       // Differs from standard applyInterpolationFrame by considering frame 0 the keyframe
       final float interpolationScale = (float)model.subFrameIndex / framesPerKeyframe;
       params.trans.lerp(model.keyframes_90[nextFrame][animationPart].translate_06, interpolationScale, coord2.coord.transfer);
-      params.quat.nlerp(model.keyframes_90[nextFrame][animationPart].quat, interpolationScale, params.quat);
+      final org.joml.Quaternionf correctedTarget = model.applyAnimationRotationCorrection(
+        i,
+        model.keyframes_90[nextFrame][animationPart].quat,
+        new org.joml.Quaternionf()
+      );
+      params.quat.nlerp(correctedTarget, interpolationScale, params.quat);
       coord2.coord.rotation(params.quat);
       if(model.geometryScale != 1.0f) {
         coord2.coord.scale(model.geometryScale);
