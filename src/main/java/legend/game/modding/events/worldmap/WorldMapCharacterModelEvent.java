@@ -23,6 +23,8 @@ public class WorldMapCharacterModelEvent extends Event {
    * Null requires a traditional 1:1 part-count match.
    */
   public int[] animationPartMap;
+  /** Uniform local geometry scale for replacement model parts. */
+  public float geometryScale = 1.0f;
 
   public WorldMapCharacterModelEvent(
     final CharacterData2c character,

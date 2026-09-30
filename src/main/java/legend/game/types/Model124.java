@@ -29,6 +29,11 @@ public class Model124 {
    * Null means the traditional 1:1 mapping.
    */
   public int[] animationPartMap;
+  /**
+   * Uniform local scale applied to each rigid mesh part without scaling animation translations.
+   * Used when replacement geometry is authored in a different local unit scale.
+   */
+  public float geometryScale = 1.0f;
   public int currentKeyframe_94;
 
   /** short */
@@ -162,6 +167,7 @@ public class Model124 {
     this.coord2_14.set(other.coord2_14);
     this.keyframes_90 = other.keyframes_90;
     this.animationPartMap = other.animationPartMap != null ? other.animationPartMap.clone() : null;
+    this.geometryScale = other.geometryScale;
     this.currentKeyframe_94 = other.currentKeyframe_94;
     this.partCount_98 = other.partCount_98;
     this.totalFrames_9a = other.totalFrames_9a;

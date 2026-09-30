@@ -14,5 +14,6 @@ public class SubmapObject {
   public final List<TmdAnimationFile> animations = new ArrayList<>();
   /** Optional map from model part index to animation part index. */
   public int[] animationPartMap;
+  public float geometryScale = 1.0f;
   public Function<String, SubmapObject210> constructor = SubmapObject210::new;
 }

@@ -2283,6 +2283,7 @@ public class SMap extends EngineState<SMap> {
     model.uvAdjustments_9d = this.submap.uvAdjustments.get(index);
 
     model.animationPartMap = this.submap.objects.get(index).animationPartMap;
+    model.geometryScale = this.submap.objects.get(index).geometryScale;
     this.loadModelAndAnimation(model, this.submap.objects.get(index).model, this.submap.objects.get(index).animations.get(0));
     this.submap.prepareSobjModel(sobj);
 
@@ -3251,10 +3252,12 @@ public class SMap extends EngineState<SMap> {
 
           final TmdAnimationFile anim = obj.animations.get(0);
           model.animationPartMap = obj.animationPartMap;
+          model.geometryScale = obj.geometryScale;
           initModel(model, tmd, anim);
 
           if(i == 0) { // Player
             this.playerModel_800c6748.animationPartMap = obj.animationPartMap;
+            this.playerModel_800c6748.geometryScale = obj.geometryScale;
             this.loadModelAndAnimation(this.playerModel_800c6748, tmd, anim);
             this.playerModel_800c6748.coord2_14.coord.transfer.set(0, 0, 0);
             this.playerModel_800c6748.coord2_14.transforms.rotate.zero();
