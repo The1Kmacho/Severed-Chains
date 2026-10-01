@@ -598,11 +598,6 @@ public class BattleHud {
           // Name
           renderText(player.getName(), displayStats.x_00 + 16, displayStats.y_02 - 25, this.font);
 
-          // Persistent player effects live on the portrait instead of consuming
-          // a text row above the HUD. Three 8px badges fit across the portrait;
-          // a second row handles unusually effect-heavy turns.
-          this.renderPlayerBattleEffectIcons(player, displayStats.x_00 - 44, displayStats.y_02 + 10);
-
           // Portrait background
           this.uiTransforms.transfer.set(displayStats.x_00 - 44, displayStats.y_02 - 22, 124.0f);
           this.uiTransforms.scaling(24.0f, 32.0f, 1.0f);
@@ -616,6 +611,11 @@ public class BattleHud {
           this.portraits.get(charSlot).render(this.uiTransforms)
             .monochrome(portraitColour)
             .scissor(displayStats.x_00 - 44, displayStats.y_02 - 22, 24, 32);
+
+          // Persistent player effects sit on top of the portrait's bottom edge.
+          // Three 8px badges fit across; a second row handles unusually
+          // effect-heavy turns.
+          this.renderPlayerBattleEffectIcons(player, displayStats.x_00 - 44, displayStats.y_02 + 10);
 
           if(brightnessIndex0 != 0) {
             final int v1_0 = (6 - this.hudFade) * 8 + 100;
