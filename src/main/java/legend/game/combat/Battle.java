@@ -525,6 +525,7 @@ public class Battle extends EngineState<Battle> {
   private int _800faa94;
   private final List<String> pendingAdditionRewardTexts = new ArrayList<>();
   private int additionRewardSummaryTick = Integer.MIN_VALUE;
+  private int standaloneAdditionRewardTick = Integer.MIN_VALUE;
 
   /** Next global is related to AdditionNameTextEffect1c */
   private int _800faa9d;
@@ -5286,6 +5287,7 @@ public class Battle extends EngineState<Battle> {
       this._800faa94 = 0;
       this.pendingAdditionRewardTexts.clear();
       this.additionRewardSummaryTick = Integer.MIN_VALUE;
+      this.standaloneAdditionRewardTick = Integer.MIN_VALUE;
     } else {
       //LAB_800d4388
       final SpTextEffect40 s1 = new SpTextEffect40();
@@ -5348,13 +5350,23 @@ public class Battle extends EngineState<Battle> {
     final String reward = text.toUpperCase();
     final int summaryAge = tickCount_800bb0fc - this.additionRewardSummaryTick;
     if(this._800faa94 != 0 && summaryAge >= 0 && summaryAge <= 8) {
-      this.allocateAdditionRewardText(reward);
-    } else {
-      this.pendingAdditionRewardTexts.add(reward);
-      if(!waitForRetailSpSummary) {
-        this.flushAdditionCompletionRewards();
-      }
+      this.allocateAdditionRewardText(reward, true);
+      return;
     }
+
+    if(waitForRetailSpSummary) {
+      this.pendingAdditionRewardTexts.add(reward);
+      return;
+    }
+
+    final int standaloneAge = tickCount_800bb0fc - this.standaloneAdditionRewardTick;
+    if(standaloneAge < 0 || standaloneAge > 8) {
+      this._800faa92 = 0;
+      this._800faa90 = -146;
+    }
+
+    this.standaloneAdditionRewardTick = tickCount_800bb0fc;
+    this.allocateAdditionRewardText(reward, false);
   }
 
   private void flushAdditionCompletionRewards() {
@@ -5369,17 +5381,17 @@ public class Battle extends EngineState<Battle> {
     }
 
     for(final String text : this.pendingAdditionRewardTexts) {
-      this.allocateAdditionRewardText(text);
+      this.allocateAdditionRewardText(text, true);
     }
 
     this.pendingAdditionRewardTexts.clear();
   }
 
-  private void allocateAdditionRewardText(final String text) {
+  private void allocateAdditionRewardText(final String text, final boolean followRetailSpState) {
     final SpTextEffect40 reward = new SpTextEffect40();
     final ScriptState<SpTextEffect40> state = SCRIPTS.allocateScriptState("AdditionRewardText", reward);
     state.loadScriptFile(doNothingScript_8004f650);
-    state.setTicker((s, effect) -> reward.tickSpTextEffect(s, this._800faa94));
+    state.setTicker((s, effect) -> reward.tickSpTextEffect(s, followRetailSpState ? this._800faa94 : 0));
 
     reward.rewardText = text;
     reward.destX_1c = this._800faa90 << 8;
