@@ -2309,6 +2309,15 @@ public class Battle extends EngineState<Battle> {
       this.loadAttackAnimations(this.combatants_8005e398[combatantIndex]);
     }
 
+    if(this.fastStandardBattleIntro) {
+      // Combatants exist by this stage, but the encounter transition is still
+      // covering the battlefield. Start the retail camera-32 settle here so its
+      // initial pull-back happens behind the transition instead of visibly
+      // travelling backwards through stage geometry after the UI appears.
+      this.cameraScriptMainTableJumpIndex_800c6748 = 33;
+      this.fastStandardBattleIntro = false;
+    }
+
     //LAB_800c79c8
     this.loadingStage++;
   }
@@ -2320,14 +2329,6 @@ public class Battle extends EngineState<Battle> {
     this.hud.initCharacterDisplay();
 
     EVENTS.postEvent(new BattleStartedEvent(this, encounter));
-
-    if(this.fastStandardBattleIntro) {
-      // Camera script 32 is the normal retail battle-camera settle/rotate path
-      // (BattleHud requests it with jump value 33). Trigger it only after the
-      // combatants and HUD have been instantiated so it has valid framing data.
-      this.cameraScriptMainTableJumpIndex_800c6748 = 33;
-      this.fastStandardBattleIntro = false;
-    }
 
     this.loadingStage++;
   }
