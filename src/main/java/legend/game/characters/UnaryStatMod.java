@@ -16,6 +16,18 @@ public class UnaryStatMod implements StatMod<UnaryStat> {
     this.contributesToOtherMods = contributesToOtherMods;
   }
 
+  public int getAmount() {
+    return this.amount;
+  }
+
+  public boolean isPercentile() {
+    return this.percentile;
+  }
+
+  public int getTurns() {
+    return this.turns;
+  }
+
   @Override
   public StatModType<UnaryStat, UnaryStatMod, UnaryStatModConfig> getType() {
     return LodMod.UNARY_STAT_MOD_TYPE.get();

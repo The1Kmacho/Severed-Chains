@@ -2310,16 +2310,58 @@ public class Battle extends EngineState<Battle> {
     }
 
     if(this.fastStandardBattleIntro) {
-      // Combatants exist by this stage, but the encounter transition is still
-      // covering the battlefield. Start the retail camera-32 settle here so its
-      // initial pull-back happens behind the transition instead of visibly
-      // travelling backwards through stage geometry after the UI appears.
+      // Camera 32 expects to begin from a sensible battlefield framing. The
+      // skipped showcase can leave the viewpoint far beyond the stage, causing
+      // camera 32 to visibly travel backwards through geometry. Snap that stale
+      // start position onto the combat formation first, then let retail camera
+      // 32 perform only its normal small settle/pan.
+      this.prepareFastStandardBattleCamera();
       this.cameraScriptMainTableJumpIndex_800c6748 = 33;
       this.fastStandardBattleIntro = false;
     }
 
     //LAB_800c79c8
     this.loadingStage++;
+  }
+
+  private void prepareFastStandardBattleCamera() {
+    if(battleState_8006e398.allBents_e0c.isEmpty()) {
+      return;
+    }
+
+    final Vector3f focus = new Vector3f();
+    int count = 0;
+
+    for(final ScriptState<? extends BattleEntity27c> bentState : battleState_8006e398.allBents_e0c) {
+      final BattleEntity27c bent = bentState.innerStruct_00;
+      final Vector3f position = bent.getPosition();
+      focus.add(position.x, position.y - bent.middleOffsetY_86 * 50.0f, position.z);
+      count++;
+    }
+
+    if(count == 0) {
+      return;
+    }
+
+    focus.div(count);
+
+    final Vector3f cameraVector = new Vector3f(this.camera_800c67f0.rview2_00.viewpoint_00)
+      .sub(this.camera_800c67f0.rview2_00.refpoint_0c);
+    float distance = cameraVector.length();
+
+    if(distance < 1.0f) {
+      cameraVector.set(0.0f, -0.25f, 1.0f).normalize();
+      distance = 4000.0f;
+    } else {
+      cameraVector.div(distance);
+    }
+
+    final float safeDistance = java.lang.Math.max(3200.0f, java.lang.Math.min(4600.0f, distance));
+    final Vector3f viewpoint = new Vector3f(focus).add(cameraVector.mul(safeDistance));
+
+    this.camera_800c67f0.resetCameraMovement();
+    this.camera_800c67f0.cameraSetRefpoint(0, focus.x, focus.y, focus.z, null);
+    this.camera_800c67f0.cameraSetViewpoint(0, viewpoint.x, viewpoint.y, viewpoint.z, null);
   }
 
   @Method(0x800c79f0L)
