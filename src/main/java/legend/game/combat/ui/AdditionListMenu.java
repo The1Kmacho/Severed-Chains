@@ -94,7 +94,7 @@ public class AdditionListMenu extends ListMenu {
     this.player_08.character.selectedAddition_19 = selectedAddition;
     this.player_08.addition = REGISTRIES.additions.getEntry(selectedAddition).get();
 
-    if(additionChanged) {
+    if(additionChanged && !this.player_08.character.isArcher()) {
       this.player_08.combatant_144.mrg_04 = null;
       this.hud.battle.loadAttackAnimations(this.player_08.combatant_144);
     }
@@ -149,7 +149,8 @@ public class AdditionListMenu extends ListMenu {
 
         this.fontOptions.trim(0);
         this.fontOptions.horizontalAlign(HorizontalAlign.CENTRE);
-        renderText("Hits: " + addition.getHitCount(this.player_08.character, additionInfo) + ", damage: " + damage + ", SP: " + sp, 160, 151, this.fontOptions);
+        final String spLabel = addition instanceof legend.lodmod.additions.ArcherAddition ? "SP bonus: " : "SP: ";
+        renderText("Hits: " + addition.getHitCount(this.player_08.character, additionInfo) + ", damage: " + damage + ", " + spLabel + sp, 160, 151, this.fontOptions);
 
         final AdditionDescriptionEvent descriptionEvent = EVENTS.postEvent(new AdditionDescriptionEvent(this.player_08.character, addition));
         if(descriptionEvent.description != null && !descriptionEvent.description.isBlank()) {

@@ -19,14 +19,17 @@ import legend.game.combat.effects.GenericAttachment1c;
 import legend.game.combat.effects.GuardEffect06;
 import legend.game.combat.types.AttackType;
 import legend.game.modding.events.battle.BattleEffectDisplayEvent;
+import legend.game.modding.events.battle.ArcherSpEvent;
 import legend.game.modding.events.battle.BattleEntityTurnEvent;
 import legend.game.modding.events.battle.BattleIntroCameraEvent;
+import legend.game.modding.events.battle.PlayerAttackPreparedEvent;
 import legend.game.modding.events.battle.IncomingAttackCueEvent;
 import legend.game.modding.events.characters.AdditionDescriptionEvent;
 import legend.game.modding.events.characters.DragoonAdditionCompletedEvent;
 import legend.game.modding.events.input.InputPressedEvent;
 import legend.lodmod.LodAdditions;
 import legend.lodmod.LodMod;
+import legend.lodmod.additions.ArcherAddition;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.legendofdragoon.modloader.Mod;
@@ -38,6 +41,7 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.Set;
 
+import static legend.core.GameEngine.REGISTRIES;
 import static legend.game.EngineStates.currentEngineState_8004dd04;
 import static legend.game.Scus94491BpeSegment_8006.battleState_8006e398;
 import static legend.game.Scus94491BpeSegment_800b.gameState_800babc8;
@@ -72,6 +76,18 @@ public final class GameplayOverhaulMod {
   private static final Vector3f savedCameraRefpoint = new Vector3f();
   private static boolean parryCameraActive;
 
+  private static PlayerBattleEntity activeArcherPlayer;
+  private static RegistryId activeArcherAddition;
+  private static legend.game.scripting.ScriptState<?> activeArcherOverlay;
+  private static AdditionOverlaysEffect44 activeArcherReticle;
+  private static int activeArcherCueStartTick = Integer.MIN_VALUE;
+  private static int activeArcherWindowStartTick = Integer.MIN_VALUE;
+  private static int activeArcherTargetTick = Integer.MIN_VALUE;
+  private static boolean activeArcherResolved;
+  private static boolean activeArcherSuccess;
+  private static boolean activeArcherAttackResolved;
+  private static boolean activeArcherXpAwarded;
+
   private static int lastMomentumTick = Integer.MIN_VALUE;
   private static PlayerBattleEntity lastMomentumPlayer;
   private static RegistryId lastMomentumAddition;
@@ -83,16 +99,64 @@ public final class GameplayOverhaulMod {
     LodAdditions.DEMONS_DANCE.getId(),
     LodAdditions.OMNI_SWEEP.getId(),
     LodAdditions.PERKY_STEP.getId(),
-    LodAdditions.BONE_CRUSH.getId()
+    LodAdditions.BONE_CRUSH.getId(),
+    LodAdditions.MOONSHOT.getId()
   );
 
   public GameplayOverhaulMod() { }
 
   @EventListener
   public static void inputPressed(final InputPressedEvent event) {
-    if(!event.repeat && event.action == LodMod.INPUT_ACTION_BTTL_COUNTER.get()) {
+    if(event.repeat) {
+      return;
+    }
+
+    if(activeArcherPlayer != null && !activeArcherResolved) {
+      if(event.action == LodMod.INPUT_ACTION_BTTL_ATTACK.get()) {
+        final int now = tickCount_800bb0fc;
+        resolveArcherAddition(now >= activeArcherWindowStartTick && now <= activeArcherTargetTick);
+        return;
+      }
+
+      if(event.action == LodMod.INPUT_ACTION_BTTL_COUNTER.get()) {
+        resolveArcherAddition(false);
+        return;
+      }
+    }
+
+    if(event.action == LodMod.INPUT_ACTION_BTTL_COUNTER.get()) {
       lastParryTick = tickCount_800bb0fc;
     }
+  }
+
+  @EventListener
+  public static void playerAttackPrepared(final PlayerAttackPreparedEvent event) {
+    final PlayerBattleEntity player = event.player;
+    if(player.isDragoon() || !player.character.isArcher() || player.character.selectedAddition_19 == null) {
+      return;
+    }
+
+    final var entry = REGISTRIES.additions.getEntry(player.character.selectedAddition_19);
+    if(!entry.isValid() || !(entry.get() instanceof final ArcherAddition addition)) {
+      return;
+    }
+
+    clearArcherAdditionCue();
+
+    activeArcherPlayer = player;
+    activeArcherAddition = player.character.selectedAddition_19;
+    activeArcherCueStartTick = tickCount_800bb0fc;
+
+    final int targetFrame = java.lang.Math.max(18, event.waitTicks - addition.getReleaseLeadTicks());
+    activeArcherTargetTick = activeArcherCueStartTick + targetFrame;
+    activeArcherWindowStartTick = activeArcherTargetTick - addition.getSuccessFrames() + 1;
+    activeArcherResolved = false;
+    activeArcherSuccess = false;
+    activeArcherAttackResolved = false;
+    activeArcherXpAwarded = false;
+
+    activeArcherReticle = new AdditionOverlaysEffect44(targetFrame, addition.getSuccessFrames(), false, true);
+    activeArcherOverlay = SEffe.allocateEffectManager("GameplayOverhaulArcherAddition", null, activeArcherReticle);
   }
 
   @EventListener
@@ -144,6 +208,10 @@ public final class GameplayOverhaulMod {
     if(parryCameraActive && activeCueAttacker == null) {
       restoreParryCamera();
     }
+
+    if(activeArcherPlayer != null && activeArcherAttackResolved) {
+      clearArcherAdditionState();
+    }
   }
 
   @EventListener
@@ -182,10 +250,24 @@ public final class GameplayOverhaulMod {
       return;
     }
 
-    // Shana and Miranda have no retail additions. Their bow attacks receive the
-    // archer-specific gameplay identity directly.
-    if(player.charId_272 == 2 || player.charId_272 == 8) {
-      addElementalBonus(event, player.getElement(), 20);
+    if(player.character.isArcher()) {
+      if(isActiveArcherAddition(player)) {
+        if(!activeArcherResolved) {
+          resolveArcherAddition(false);
+        }
+
+        activeArcherAttackResolved = true;
+
+        if(activeArcherSuccess) {
+          final ArcherAddition addition = getActiveArcherAddition();
+          final CharacterAdditionInfo info = player.character.getAdditionInfo(activeArcherAddition);
+          if(addition != null && info != null) {
+            event.damage = java.lang.Math.max(1, event.damage * addition.getDamage(player.character, info) / 100);
+            addElementalBonus(event, player.getElement(), isFinal(addition) ? 25 : 10);
+            awardArcherAdditionXp(player, addition, info);
+          }
+        }
+      }
       return;
     }
 
@@ -212,9 +294,18 @@ public final class GameplayOverhaulMod {
       return;
     }
 
-    // Archer exception: no retail addition exists, so the regular attack heals.
-    if(player.charId_272 == 2 || player.charId_272 == 8) {
-      healPercent(player, 10);
+    if(player.character.isArcher()) {
+      if(isActiveArcherAddition(player) && activeArcherSuccess) {
+        final RegistryId id = activeArcherAddition;
+        if(lastMomentumTick != tickCount_800bb0fc
+          || lastMomentumPlayer != player
+          || !id.equals(lastMomentumAddition)) {
+          lastMomentumTick = tickCount_800bb0fc;
+          lastMomentumPlayer = player;
+          lastMomentumAddition = id;
+          applyArcherMomentum(player, event.defender, id, event);
+        }
+      }
       return;
     }
 
@@ -237,11 +328,34 @@ public final class GameplayOverhaulMod {
   }
 
   @EventListener
+  public static void archerSp(final ArcherSpEvent event) {
+    if(!isActiveArcherAddition(event.bent) || !activeArcherSuccess) {
+      return;
+    }
+
+    final ArcherAddition addition = getActiveArcherAddition();
+    final CharacterAdditionInfo info = event.bent.character.getAdditionInfo(activeArcherAddition);
+    if(addition != null && info != null) {
+      event.sp += addition.getSp(event.bent.character, info);
+    }
+  }
+
+  @EventListener
   public static void describeAddition(final AdditionDescriptionEvent event) {
     final RegistryId id = event.addition.getRegistryId();
     final String elementBonus = isFinal(event.addition) ? "Element +25%" : "Element +10%";
 
-    if(isAddition(id, LodAdditions.DOUBLE_SLASH.getId())) {
+    if(isAddition(id, LodAdditions.QUICK_DRAW.getId())) {
+      event.description = "Complete: " + elementBonus + ", Speed +15% (2T)";
+    } else if(isAddition(id, LodAdditions.PINPOINT.getId())) {
+      event.description = "Complete: " + elementBonus + ", Power +10% (2T)";
+    } else if(isAddition(id, LodAdditions.PIERCING_ARROW.getId())) {
+      event.description = "Complete: " + elementBonus + ", Enemy DEF -20% (3T)";
+    } else if(isAddition(id, LodAdditions.SPIRIT_SHOT.getId())) {
+      event.description = "Complete: " + elementBonus + ", Heal 10% HP";
+    } else if(isAddition(id, LodAdditions.MOONSHOT.getId())) {
+      event.description = "Complete: " + elementBonus + ", Stun";
+    } else if(isAddition(id, LodAdditions.DOUBLE_SLASH.getId())) {
       event.description = "Complete: " + elementBonus + ", Power +10% (2T)";
     } else if(isAddition(id, LodAdditions.VOLCANO.getId())) {
       event.description = "Complete: " + elementBonus + ", Enemy DEF -15% (3T)";
@@ -323,7 +437,8 @@ public final class GameplayOverhaulMod {
       "rod_typhoon_attack",
       "summon_4_gods_attack",
       "inferno_attack",
-      "bone_crush_attack"
+      "bone_crush_attack",
+      "pinpoint_attack"
     );
     appendMomentumStatEffect(
       event,
@@ -335,7 +450,8 @@ public final class GameplayOverhaulMod {
       "flower_storm_defense",
       "hard_blade_defense_down",
       "five_ring_defense_down",
-      "pursuit_defense_down"
+      "pursuit_defense_down",
+      "piercing_arrow_defense_down"
     );
     appendMomentumStatEffect(
       event,
@@ -348,7 +464,8 @@ public final class GameplayOverhaulMod {
       "double_punch_speed",
       "omni_sweep_speed",
       "hammer_spin_speed",
-      "cats_cradle_slow"
+      "cats_cradle_slow",
+      "quick_draw_speed"
     );
   }
 
@@ -372,6 +489,72 @@ public final class GameplayOverhaulMod {
         character.selectedAddition_19
       );
     }
+  }
+
+  private static boolean isActiveArcherAddition(final PlayerBattleEntity player) {
+    return activeArcherPlayer == player
+      && activeArcherAddition != null
+      && activeArcherAddition.equals(player.character.selectedAddition_19);
+  }
+
+  private static ArcherAddition getActiveArcherAddition() {
+    if(activeArcherAddition == null) {
+      return null;
+    }
+
+    final var entry = REGISTRIES.additions.getEntry(activeArcherAddition);
+    return entry.isValid() && entry.get() instanceof final ArcherAddition addition ? addition : null;
+  }
+
+  private static void resolveArcherAddition(final boolean success) {
+    if(activeArcherResolved) {
+      return;
+    }
+
+    activeArcherResolved = true;
+    activeArcherSuccess = success;
+
+    if(activeArcherReticle != null) {
+      activeArcherReticle.completeVisualOnly(success);
+    }
+
+    activeArcherOverlay = null;
+    activeArcherReticle = null;
+  }
+
+  private static void clearArcherAdditionCue() {
+    if(activeArcherOverlay != null) {
+      activeArcherOverlay.deallocateWithChildren();
+    }
+    activeArcherOverlay = null;
+    activeArcherReticle = null;
+  }
+
+  private static void clearArcherAdditionState() {
+    clearArcherAdditionCue();
+    activeArcherPlayer = null;
+    activeArcherAddition = null;
+    activeArcherCueStartTick = Integer.MIN_VALUE;
+    activeArcherWindowStartTick = Integer.MIN_VALUE;
+    activeArcherTargetTick = Integer.MIN_VALUE;
+    activeArcherResolved = false;
+    activeArcherSuccess = false;
+    activeArcherAttackResolved = false;
+    activeArcherXpAwarded = false;
+  }
+
+  private static void awardArcherAdditionXp(final PlayerBattleEntity player, final ArcherAddition addition, final CharacterAdditionInfo info) {
+    if(activeArcherXpAwarded) {
+      return;
+    }
+
+    activeArcherXpAwarded = true;
+    info.xp++;
+    while(info.level < addition.getMaxLevel(player.character, info)
+      && info.xp >= addition.getXpToNextLevel(player.character, info)) {
+      info.level++;
+    }
+    player.character.template.checkUnlocks(player.character, null);
   }
 
   private static String attackCueKey(final BattleEntity27c attacker, final AttackType attackType) {
@@ -461,7 +644,7 @@ public final class GameplayOverhaulMod {
 
     // A small framing shift prevents the shot feeling pinned to the centre,
     // without dragging the camera all the way around the attacker.
-    final float refpointTravel = java.lang.Math.min(220.0f, attackDistance * 0.10f);
+    final float refpointTravel = java.lang.Math.min(320.0f, attackDistance * 0.14f);
     final Vector3f desiredRefpoint = new Vector3f(savedCameraRefpoint)
       .add(new Vector3f(attackDirection).mul(refpointTravel));
 
@@ -473,11 +656,11 @@ public final class GameplayOverhaulMod {
     }
 
     cameraRay.div(cameraDistance);
-    final float desiredDistance = java.lang.Math.max(1400.0f, cameraDistance - 320.0f);
+    final float desiredDistance = java.lang.Math.max(1400.0f, cameraDistance - 700.0f);
     final Vector3f desiredViewpoint = new Vector3f(desiredRefpoint)
       .add(cameraRay.mul(desiredDistance));
 
-    final int cameraTicks = java.lang.Math.max(10, java.lang.Math.min(20, expectedImpactTicks));
+    final int cameraTicks = java.lang.Math.max(9, java.lang.Math.min(18, expectedImpactTicks));
 
     // Mode 0 is world-space translation: no angle interpolation, no orbit.
     // Smoothing mode 1 eases into the final framing instead of accelerating
@@ -538,6 +721,35 @@ public final class GameplayOverhaulMod {
       null
     );
     parryCameraActive = false;
+  }
+
+  private static void applyArcherMomentum(
+    final PlayerBattleEntity player,
+    final BattleEntity27c defender,
+    final RegistryId id,
+    final AttackSpecialEffectEvent event
+  ) {
+    String notification = null;
+
+    if(isAddition(id, LodAdditions.QUICK_DRAW.getId())) {
+      setSpeed(player, "quick_draw_speed", 15, selfEffectTurns(2));
+      notification = "+15% SPD (2T)";
+    } else if(isAddition(id, LodAdditions.PINPOINT.getId())) {
+      setAttack(player, "pinpoint_attack", 10, selfEffectTurns(2));
+      notification = "+10% ATK (2T)";
+    } else if(isAddition(id, LodAdditions.PIERCING_ARROW.getId())) {
+      setDefense(defender, "piercing_arrow_defense_down", -20, 3);
+      notification = "ENEMY DEF -20% (3T)";
+    } else if(isAddition(id, LodAdditions.SPIRIT_SHOT.getId())) {
+      healPercent(player, 10);
+      notification = "+10% HP";
+    } else if(isAddition(id, LodAdditions.MOONSHOT.getId()) && forceStatusIfAllowed(event, 0x10)) {
+      notification = "+STUN";
+    }
+
+    if(notification != null && currentEngineState_8004dd04 instanceof final Battle battle) {
+      battle.hud.showEffectNotification(notification);
+    }
   }
 
   private static void applyAdditionMomentum(
