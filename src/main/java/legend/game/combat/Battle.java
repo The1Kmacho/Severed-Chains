@@ -432,6 +432,8 @@ public class Battle extends EngineState<Battle> {
   private boolean shouldRenderMcq_800c66d4;
 
   private ScriptFile playerBattleScript_800c66fc;
+  /** Standard encounters defer the retail camera-32 settle until battleStart, when actors exist. */
+  private boolean fastStandardBattleIntro;
   public int cameraScriptSubtableJumpIndex_800c6700;
   public int cameraScriptSubtableJumpIndex_800c6704;
 
@@ -2318,6 +2320,14 @@ public class Battle extends EngineState<Battle> {
     this.hud.initCharacterDisplay();
 
     EVENTS.postEvent(new BattleStartedEvent(this, encounter));
+
+    if(this.fastStandardBattleIntro) {
+      // Camera script 32 is the normal retail battle-camera settle/rotate path
+      // (BattleHud requests it with jump value 33). Trigger it only after the
+      // combatants and HUD have been instantiated so it has valid framing data.
+      this.cameraScriptMainTableJumpIndex_800c6748 = 33;
+      this.fastStandardBattleIntro = false;
+    }
 
     this.loadingStage++;
   }
@@ -9380,13 +9390,13 @@ public class Battle extends EngineState<Battle> {
     this.currentCameraIndex_800c6780 = encounter.cameraPosIndices[this.hud.currentCameraPositionIndicesIndex_800c66b0];
 
     if(introCameraEvent.skipStandardIntro) {
-      // Camera script 32 is the retail standard battle-camera settle/rotate
-      // routine (requested as jump value 33 by BattleHud). Run only this small
-      // framing move while battle startup/UI proceeds, skipping the preceding
-      // enemy/player showcase entirely.
-      this.cameraScriptMainTableJumpIndex_800c6748 = 33;
+      // Skip the enemy/player showcase. The retail camera-32 settle is deferred
+      // until battleStart(), after player and monster battle entities exist.
+      this.cameraScriptMainTableJumpIndex_800c6748 = 0;
       this.battleInitialCameraMovementFinished_800c66a8 = true;
+      this.fastStandardBattleIntro = true;
     } else {
+      this.fastStandardBattleIntro = false;
       final int openingCamera;
       if((simpleRand() & 0x8000) == 0) {
         openingCamera = encounter.monsterOpeningCamera;
