@@ -13,6 +13,7 @@ import java.util.Arrays;
 
 import static legend.core.GameEngine.GPU;
 import static legend.game.Scus94491BpeSegment.battleUiParts;
+import static legend.game.combat.Battle.asciiTable_800fa788;
 
 public class SpTextEffect40 implements ScriptedObject {
   public boolean movingY_00 = true;
@@ -21,6 +22,7 @@ public class SpTextEffect40 implements ScriptedObject {
 
   public int ticks_04;
   public int value_08;
+  public String rewardText;
   /** .8 */
   public int x_0c;
   /** .8 */
@@ -116,22 +118,52 @@ public class SpTextEffect40 implements ScriptedObject {
 
         //LAB_800d4224
         //LAB_800d423c
-        int value = this.value_08;
-        final int digitCount = MathHelper.digitCount(value);
-        for(int charIndex = 0; charIndex < digitCount; charIndex++) {
-          final int chr = value % 10;
-          battleUiParts.queueBigNumber(chr, x + (digitCount - charIndex - 1) * 8, y, packedClut, Translucency.B_PLUS_F, brightness, 1.0f, 1.0f);
-          value /= 10;
+        if(this.rewardText != null) {
+          this.renderRewardText(this.rewardText, x, y, brightness);
+        } else {
+          int value = this.value_08;
+          final int digitCount = MathHelper.digitCount(value);
+          for(int charIndex = 0; charIndex < digitCount; charIndex++) {
+            final int chr = value % 10;
+            battleUiParts.queueBigNumber(chr, x + (digitCount - charIndex - 1) * 8, y, packedClut, Translucency.B_PLUS_F, brightness, 1.0f, 1.0f);
+            value /= 10;
+          }
+
+          x += digitCount * 8;
+
+          //LAB_800d4274
+          battleUiParts.queueBigNumber(11, x - 2, y, packedClut, Translucency.B_PLUS_F, brightness, 1.0f, 1.0f);
+          battleUiParts.queueBigNumber(12, x + 4, y, packedClut, Translucency.B_PLUS_F, brightness, 1.0f, 1.0f);
         }
-
-        x += digitCount * 8;
-
-        //LAB_800d4274
-        battleUiParts.queueBigNumber(11, x - 2, y, packedClut, Translucency.B_PLUS_F, brightness, 1.0f, 1.0f);
-        battleUiParts.queueBigNumber(12, x + 4, y, packedClut, Translucency.B_PLUS_F, brightness, 1.0f, 1.0f);
       }
       //LAB_800d42c0
     }
     //LAB_800d42dc
+  }
+
+  private void renderRewardText(final String text, final int startX, final int y, final int brightness) {
+    int x = startX;
+
+    for(int i = 0; i < text.length(); i++) {
+      final char chr = text.charAt(i);
+
+      if(chr == '+') {
+        battleUiParts.queueBigNumber(10, x, y, 0x29, Translucency.B_PLUS_F, brightness, 1.0f, 1.0f);
+        x += 8;
+        continue;
+      }
+
+      int glyph = 0;
+      while(glyph < asciiTable_800fa788.length && asciiTable_800fa788[glyph] != chr && asciiTable_800fa788[glyph] != 0) {
+        glyph++;
+      }
+
+      if(glyph >= asciiTable_800fa788.length || asciiTable_800fa788[glyph] == 0) {
+        glyph = 91;
+      }
+
+      battleUiParts.queueLetter(glyph, x, y, 0x29, Translucency.B_PLUS_F, brightness, 1.0f, 1.0f);
+      x += 8;
+    }
   }
 }
