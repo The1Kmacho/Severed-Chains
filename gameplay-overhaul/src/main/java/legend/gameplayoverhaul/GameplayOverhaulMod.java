@@ -30,6 +30,7 @@ import legend.game.modding.events.characters.AdditionDescriptionEvent;
 import legend.game.modding.events.characters.DragoonAdditionCompletedEvent;
 import legend.game.modding.events.input.InputPressedEvent;
 import legend.game.inventory.screens.TextColour;
+import legend.game.scripting.ScriptState;
 import legend.lodmod.LodAdditions;
 import legend.lodmod.LodMod;
 import legend.lodmod.additions.ArcherAddition;
@@ -45,7 +46,10 @@ import java.util.Map;
 import java.util.Set;
 
 import static legend.core.GameEngine.REGISTRIES;
+import static legend.core.GameEngine.SCRIPTS;
 import static legend.game.EngineStates.currentEngineState_8004dd04;
+import static legend.game.combat.environment.BattleCamera.UPDATE_REFPOINT;
+import static legend.game.combat.environment.BattleCamera.UPDATE_VIEWPOINT;
 import static legend.game.Scus94491BpeSegment_8006.battleState_8006e398;
 import static legend.game.Scus94491BpeSegment_800b.gameState_800babc8;
 import static legend.game.Scus94491BpeSegment_800b.spGained_800bc950;
@@ -83,8 +87,17 @@ public final class GameplayOverhaulMod {
   private static String activeCueKey;
   private static legend.game.scripting.ScriptState<?> activeParryOverlay;
   private static AdditionOverlaysEffect44 activeParryReticle;
+  private static ScriptState<BattleEntity27c> activeParryCameraTracker;
+  private static BattleEntity27c parryCameraAttacker;
+  private static PlayerBattleEntity parryCameraDefender;
+  private static final Vector3f parryCameraAttackerStart = new Vector3f();
   private static final Vector3f savedCameraViewpoint = new Vector3f();
   private static final Vector3f savedCameraRefpoint = new Vector3f();
+  private static final Vector3f savedCameraRay = new Vector3f();
+  private static float parryCameraStartDistance;
+  private static float parryCameraBaseDistance;
+  private static float parryCameraFocusDistance;
+  private static boolean parryCameraCueResolved;
   private static boolean parryCameraActive;
 
   private static PlayerBattleEntity activeArcherPlayer;
@@ -513,8 +526,7 @@ public final class GameplayOverhaulMod {
       "five_ring_defense_down",
       "pursuit_defense_down",
       "piercing_arrow_defense_down",
-      "break_defense_down",
-      "guard_defense"
+      "break_defense_down"
     );
     if(event.entity instanceof PlayerBattleEntity) {
       appendMomentumStatEffect(
@@ -539,8 +551,10 @@ public final class GameplayOverhaulMod {
       "quick_draw_speed"
     );
 
-    if(event.entity.stats.getStat(LodMod.DEFENSE_STAT.get()).hasMod(new RegistryId(MOD_ID, "guard_defense"))) {
-      event.effects.add("GUARD");
+    final UnaryStat defense = event.entity.stats.getStat(LodMod.DEFENSE_STAT.get());
+    final RegistryId guardId = new RegistryId(MOD_ID, "guard_defense");
+    if(defense != null && defense.hasMod(guardId)) {
+      event.effects.add("GUARD(" + defense.getMod(guardId).getTurns() + "T)");
     }
 
     if(event.entity instanceof final MonsterBattleEntity monster) {
@@ -713,6 +727,7 @@ public final class GameplayOverhaulMod {
     // bookkeeping so the next attack never tries to deallocate an old state.
     activeParryOverlay = null;
     activeParryReticle = null;
+    parryCameraCueResolved = true;
     activeCueAttacker = null;
     activeCueDefender = null;
     activeCueAttackType = null;
@@ -737,6 +752,11 @@ public final class GameplayOverhaulMod {
     restoreParryCamera();
   }
 
+  private static Vector3f battleFocusPosition(final BattleEntity27c entity) {
+    return new Vector3f(entity.getPosition())
+      .add(0.0f, -entity.middleOffsetY_86 * 50.0f, 0.0f);
+  }
+
   private static void focusParryCamera(final BattleEntity27c attacker, final int expectedImpactTicks) {
     if(!(currentEngineState_8004dd04 instanceof final Battle battle)
       || !(activeCueDefender instanceof final PlayerBattleEntity defender)) {
@@ -746,96 +766,129 @@ public final class GameplayOverhaulMod {
     final var camera = battle.camera_800c67f0;
     savedCameraViewpoint.set(camera.rview2_00.viewpoint_00);
     savedCameraRefpoint.set(camera.rview2_00.refpoint_0c);
-    parryCameraActive = true;
+    savedCameraRay.set(savedCameraViewpoint).sub(savedCameraRefpoint);
+    parryCameraBaseDistance = savedCameraRay.length();
 
-    // Keep the current camera side and orientation. Counter readability is more
-    // important than creating a dramatic orbit: gently pan the shot toward the
-    // incoming attack and dolly straight inward along the existing camera ray.
-    final Vector3f attackerPos = new Vector3f(attacker.getPosition())
-      .add(0.0f, -attacker.middleOffsetY_86 * 50.0f, 0.0f);
-    final Vector3f defenderPos = new Vector3f(defender.getPosition())
-      .add(0.0f, -defender.middleOffsetY_86 * 50.0f, 0.0f);
-    final Vector3f attackDirection = new Vector3f(defenderPos).sub(attackerPos);
-    final float attackDistance = attackDirection.length();
-
-    if(attackDistance > 0.001f) {
-      attackDirection.div(attackDistance);
-    } else {
-      attackDirection.set(0.0f, 0.0f, 1.0f);
-    }
-
-    // Reframe toward the space between attacker and defender instead of only
-    // nudging along the attack vector. Keep the current camera ray so this is
-    // still a stable world-space pan/dolly with no orbit or yaw.
-    final Vector3f combatCenter = new Vector3f(attackerPos).lerp(defenderPos, 0.55f);
-    final Vector3f refpointDelta = new Vector3f(combatCenter).sub(savedCameraRefpoint);
-    final float refpointDistance = refpointDelta.length();
-    final float maxRefpointTravel = attackDistance > 2400.0f ? 900.0f : 1300.0f;
-    if(refpointDistance > maxRefpointTravel && refpointDistance > 0.001f) {
-      refpointDelta.mul(maxRefpointTravel / refpointDistance);
-    }
-    final Vector3f desiredRefpoint = new Vector3f(savedCameraRefpoint).add(refpointDelta);
-
-    final Vector3f cameraRay = new Vector3f(savedCameraViewpoint).sub(savedCameraRefpoint);
-    final float cameraDistance = cameraRay.length();
-
-    if(cameraDistance <= 0.001f) {
+    if(parryCameraBaseDistance <= 0.001f) {
       return;
     }
 
-    cameraRay.div(cameraDistance);
-    final float distanceScale =
-      attackDistance > 2400.0f ? 0.58f :
-      attackDistance > 1400.0f ? 0.48f :
-      0.40f;
-    final float desiredDistance = java.lang.Math.max(700.0f, cameraDistance * distanceScale);
+    savedCameraRay.div(parryCameraBaseDistance);
+    parryCameraAttacker = attacker;
+    parryCameraDefender = defender;
+    parryCameraAttackerStart.set(battleFocusPosition(attacker));
+    parryCameraStartDistance = parryCameraAttackerStart.distance(battleFocusPosition(defender));
+    if(parryCameraStartDistance <= 0.001f) {
+      return;
+    }
+
+    // The same approach interpolation drives both framing and zoom. Long
+    // approaches stay a little wider, while close melee can push in harder.
+    parryCameraFocusDistance = java.lang.Math.max(
+      650.0f,
+      parryCameraBaseDistance * (parryCameraStartDistance > 2400.0f ? 0.58f : 0.46f)
+    );
+    parryCameraCueResolved = false;
+    parryCameraActive = true;
+
+    // Own the camera while the counter shot is active. The tracker recomputes
+    // the attacker/defender midpoint every tick, so the shot follows the actual
+    // attack movement instead of animating once toward a static destination.
+    camera.flags_11c &= ~(UPDATE_VIEWPOINT | UPDATE_REFPOINT);
+    camera.viewpointMoving_122 = false;
+    camera.refpointMoving_123 = false;
+
+    if(activeParryCameraTracker != null) {
+      activeParryCameraTracker.deallocateWithChildren();
+    }
+
+    activeParryCameraTracker = SCRIPTS.allocateScriptState("GameplayOverhaulParryCamera", attacker);
+    activeParryCameraTracker.setTicker(GameplayOverhaulMod::tickParryCamera);
+    tickParryCamera(activeParryCameraTracker, attacker);
+  }
+
+  private static void tickParryCamera(
+    final ScriptState<BattleEntity27c> state,
+    final BattleEntity27c ignored
+  ) {
+    if(!parryCameraActive
+      || parryCameraAttacker == null
+      || parryCameraDefender == null
+      || !(currentEngineState_8004dd04 instanceof final Battle battle)) {
+      state.deallocateWithChildren();
+      if(activeParryCameraTracker == state) {
+        activeParryCameraTracker = null;
+      }
+      return;
+    }
+
+    final Vector3f attackerPos = battleFocusPosition(parryCameraAttacker);
+    final Vector3f defenderPos = battleFocusPosition(parryCameraDefender);
+    final float currentDistance = attackerPos.distance(defenderPos);
+
+    float progress = 1.0f - currentDistance / parryCameraStartDistance;
+    progress = java.lang.Math.max(0.0f, java.lang.Math.min(1.0f, progress));
+
+    // Smoothstep gives the pan and zoom the same restrained cinematic ease on
+    // the way in and naturally reverses it while the enemy returns home.
+    final float blend = progress * progress * (3.0f - 2.0f * progress);
+    final Vector3f midpoint = new Vector3f(attackerPos).lerp(defenderPos, 0.5f);
+    final Vector3f desiredRefpoint = new Vector3f(savedCameraRefpoint).lerp(midpoint, blend);
+    final float desiredDistance =
+      parryCameraBaseDistance
+        + (parryCameraFocusDistance - parryCameraBaseDistance) * blend;
     final Vector3f desiredViewpoint = new Vector3f(desiredRefpoint)
-      .add(cameraRay.mul(desiredDistance));
+      .add(new Vector3f(savedCameraRay).mul(desiredDistance));
 
-    final int cameraTicks = java.lang.Math.max(6, java.lang.Math.min(9, expectedImpactTicks));
+    final var camera = battle.camera_800c67f0;
+    camera.flags_11c &= ~(UPDATE_VIEWPOINT | UPDATE_REFPOINT);
+    camera.viewpointMoving_122 = false;
+    camera.refpointMoving_123 = false;
+    camera.setRefpoint(desiredRefpoint.x, desiredRefpoint.y, desiredRefpoint.z);
+    camera.setViewpoint(desiredViewpoint.x, desiredViewpoint.y, desiredViewpoint.z);
 
-    // Mode 0 is world-space translation: no angle interpolation, no orbit.
-    // Smoothing mode 1 eases into the final framing instead of accelerating
-    // through it.
-    camera.cameraAccelerateRefpoint(
-      0,
-      desiredRefpoint.x,
-      desiredRefpoint.y,
-      desiredRefpoint.z,
-      cameraTicks,
-      1,
-      0.0f,
-      0,
-      null
-    );
-    camera.cameraAccelerateViewpoint(
-      0,
-      desiredViewpoint.x,
-      desiredViewpoint.y,
-      desiredViewpoint.z,
-      cameraTicks,
-      1,
-      0.0f,
-      0,
-      null
-    );
+    // Once impact has resolved, the attacker's return movement itself drives
+    // blend back to zero. Snap only the final sub-pixel remainder to the saved
+    // shot and release camera ownership.
+    final float returnTolerance = java.lang.Math.max(48.0f, parryCameraStartDistance * 0.025f);
+    if(parryCameraCueResolved
+      && attackerPos.distance(parryCameraAttackerStart) <= returnTolerance
+      && progress <= 0.03f) {
+      camera.setRefpoint(savedCameraRefpoint.x, savedCameraRefpoint.y, savedCameraRefpoint.z);
+      camera.setViewpoint(savedCameraViewpoint.x, savedCameraViewpoint.y, savedCameraViewpoint.z);
+      parryCameraActive = false;
+      parryCameraAttacker = null;
+      parryCameraDefender = null;
+      parryCameraCueResolved = false;
+      state.deallocateWithChildren();
+      if(activeParryCameraTracker == state) {
+        activeParryCameraTracker = null;
+      }
+    }
   }
 
   private static void restoreParryCamera() {
+    if(activeParryCameraTracker != null) {
+      activeParryCameraTracker.deallocateWithChildren();
+      activeParryCameraTracker = null;
+    }
+
+    parryCameraAttacker = null;
+    parryCameraDefender = null;
+    parryCameraCueResolved = false;
+
     if(!parryCameraActive || !(currentEngineState_8004dd04 instanceof final Battle battle)) {
       parryCameraActive = false;
       return;
     }
 
     final var camera = battle.camera_800c67f0;
-
-    // Ease back to the pre-attack framing as well, avoiding a linear snap-out.
     camera.cameraAccelerateViewpoint(
       0,
       savedCameraViewpoint.x,
       savedCameraViewpoint.y,
       savedCameraViewpoint.z,
-      10,
+      6,
       1,
       0.0f,
       0,
@@ -846,7 +899,7 @@ public final class GameplayOverhaulMod {
       savedCameraRefpoint.x,
       savedCameraRefpoint.y,
       savedCameraRefpoint.z,
-      10,
+      6,
       1,
       0.0f,
       0,
@@ -1041,37 +1094,31 @@ public final class GameplayOverhaulMod {
   }
 
   private static String shortReward(final String notification) {
-    final String turns = extractTurns(notification);
-
     if(notification.startsWith("ENEMY DEF -")) {
-      return "+DEF DOWN" + (turns.isEmpty() ? "" : " " + turns);
+      return "-DEF";
     }
     if(notification.startsWith("ENEMY ATK -")) {
-      return "+ATK DOWN" + (turns.isEmpty() ? "" : " " + turns);
+      return "-ATK";
     }
     if(notification.startsWith("ENEMY SPD -")) {
-      return "+SPD DOWN" + (turns.isEmpty() ? "" : " " + turns);
+      return "-SPD";
     }
     if(notification.contains("ATK")) {
-      return "+ATK" + (turns.isEmpty() ? "" : " " + turns);
+      return "+ATK";
     }
     if(notification.contains("DEF")) {
-      return "+DEF" + (turns.isEmpty() ? "" : " " + turns);
+      return "+DEF";
     }
     if(notification.contains("SPD")) {
-      return "+SPD" + (turns.isEmpty() ? "" : " " + turns);
+      return "+SPD";
     }
     if(notification.contains("HP")) {
       return "+HP";
     }
 
-    return notification.startsWith("+") ? notification : "+" + notification;
-  }
-
-  private static String extractTurns(final String notification) {
-    final int start = notification.indexOf('(');
-    final int end = notification.indexOf(')', start + 1);
-    return start >= 0 && end > start ? notification.substring(start + 1, end) : "";
+    return notification.startsWith("+") || notification.startsWith("-")
+      ? notification
+      : "+" + notification;
   }
 
   private static boolean isAddition(final RegistryId id, final RegistryId... candidates) {
