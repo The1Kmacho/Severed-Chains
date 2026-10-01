@@ -289,7 +289,7 @@ public final class GameplayOverhaulMod {
           markNegatedAttack(event.defender);
           playParryReaction((PlayerBattleEntity)event.defender);
           if(event.attacker instanceof final MonsterBattleEntity monster) {
-            addBreak(monster, BREAK_PARRY_GAIN, false);
+            addBreak(monster, BREAK_PARRY_GAIN, false, false);
           }
           LOGGER.info("[Gameplay Overhaul] PARRY");
           return;
@@ -544,7 +544,7 @@ public final class GameplayOverhaulMod {
     }
 
     if(event.entity instanceof final MonsterBattleEntity monster) {
-      event.effects.add("BRK" + BREAK_GAUGE.getOrDefault(monster, 0));
+      event.effects.add("BRK " + BREAK_GAUGE.getOrDefault(monster, 0));
 
       if(monster.physicalImmunity_110 || (monster.damageReductionFlags_6e & 0x8) != 0) {
         event.effects.add("P-IMM");
@@ -767,8 +767,8 @@ public final class GameplayOverhaulMod {
     // Close attacks can punch in harder; long approaches keep more battlefield
     // context. Camera side/orientation is still preserved.
     final float refpointTravel = java.lang.Math.min(
-      attackDistance > 2400.0f ? 220.0f : 340.0f,
-      attackDistance * (attackDistance > 2400.0f ? 0.09f : 0.15f)
+      attackDistance > 2400.0f ? 320.0f : 520.0f,
+      attackDistance * (attackDistance > 2400.0f ? 0.12f : 0.22f)
     );
     final Vector3f desiredRefpoint = new Vector3f(savedCameraRefpoint)
       .add(new Vector3f(attackDirection).mul(refpointTravel));
@@ -782,14 +782,14 @@ public final class GameplayOverhaulMod {
 
     cameraRay.div(cameraDistance);
     final float dollyDistance =
-      attackDistance > 2400.0f ? 480.0f :
-      attackDistance > 1400.0f ? 700.0f :
-      900.0f;
-    final float desiredDistance = java.lang.Math.max(1400.0f, cameraDistance - dollyDistance);
+      attackDistance > 2400.0f ? 800.0f :
+      attackDistance > 1400.0f ? 1150.0f :
+      1500.0f;
+    final float desiredDistance = java.lang.Math.max(1250.0f, cameraDistance - dollyDistance);
     final Vector3f desiredViewpoint = new Vector3f(desiredRefpoint)
       .add(cameraRay.mul(desiredDistance));
 
-    final int cameraTicks = java.lang.Math.max(9, java.lang.Math.min(18, expectedImpactTicks));
+    final int cameraTicks = java.lang.Math.max(7, java.lang.Math.min(12, expectedImpactTicks));
 
     // Mode 0 is world-space translation: no angle interpolation, no orbit.
     // Smoothing mode 1 eases into the final framing instead of accelerating
@@ -880,10 +880,10 @@ public final class GameplayOverhaulMod {
       queueChainReward(player, id, battle);
       if(defender instanceof final MonsterBattleEntity monster) {
         final Addition addition = REGISTRIES.additions.getEntry(id).get();
-        addBreak(monster, isFinal(addition) ? BREAK_FINAL_ADDITION_GAIN : BREAK_ADDITION_GAIN, true);
+        addBreak(monster, isFinal(addition) ? BREAK_FINAL_ADDITION_GAIN : BREAK_ADDITION_GAIN, true, player.character.hasDragoon());
       }
       if(notification != null) {
-        battle.queueAdditionCompletionReward(shortReward(notification));
+        battle.queueAdditionCompletionReward(shortReward(notification), player.character.hasDragoon());
       }
     }
   }
@@ -1001,10 +1001,10 @@ public final class GameplayOverhaulMod {
       queueChainReward(player, id, battle);
       if(defender instanceof final MonsterBattleEntity monster) {
         final Addition addition = REGISTRIES.additions.getEntry(id).get();
-        addBreak(monster, isFinal(addition) ? BREAK_FINAL_ADDITION_GAIN : BREAK_ADDITION_GAIN, true);
+        addBreak(monster, isFinal(addition) ? BREAK_FINAL_ADDITION_GAIN : BREAK_ADDITION_GAIN, true, player.character.hasDragoon());
       }
       if(notification != null) {
-        battle.queueAdditionCompletionReward(shortReward(notification));
+        battle.queueAdditionCompletionReward(shortReward(notification), player.character.hasDragoon());
       }
     }
   }
@@ -1013,11 +1013,11 @@ public final class GameplayOverhaulMod {
     final RegistryId previous = LAST_COMPLETED_ADDITIONS.put(player.charId_272, id);
     if(previous != null && !previous.equals(id)) {
       grantSp(player, CHAIN_SP_BONUS);
-      battle.queueAdditionCompletionReward("+5 SP CHAIN");
+      battle.queueAdditionCompletionReward("+5 SP CHAIN", player.character.hasDragoon());
     }
   }
 
-  private static void addBreak(final MonsterBattleEntity monster, final int amount, final boolean additionPipeline) {
+  private static void addBreak(final MonsterBattleEntity monster, final int amount, final boolean additionPipeline, final boolean waitForRetailSpSummary) {
     final int next = java.lang.Math.min(BREAK_THRESHOLD, BREAK_GAUGE.getOrDefault(monster, 0) + amount);
     if(next < BREAK_THRESHOLD) {
       BREAK_GAUGE.put(monster, next);
@@ -1030,7 +1030,7 @@ public final class GameplayOverhaulMod {
 
     if(currentEngineState_8004dd04 instanceof final Battle battle) {
       if(additionPipeline) {
-        battle.queueAdditionCompletionReward("+BREAK");
+        battle.queueAdditionCompletionReward("+BREAK", waitForRetailSpSummary);
       } else {
         battle.hud.showEffectNotification("BREAK!", TextColour.GOLD);
       }
