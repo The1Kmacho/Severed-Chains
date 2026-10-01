@@ -5337,6 +5337,10 @@ public class Battle extends EngineState<Battle> {
   }
 
   public void queueAdditionCompletionReward(final String text) {
+    this.queueAdditionCompletionReward(text, true);
+  }
+
+  public void queueAdditionCompletionReward(final String text, final boolean waitForRetailSpSummary) {
     if(text == null || text.isBlank()) {
       return;
     }
@@ -5347,6 +5351,9 @@ public class Battle extends EngineState<Battle> {
       this.allocateAdditionRewardText(reward);
     } else {
       this.pendingAdditionRewardTexts.add(reward);
+      if(!waitForRetailSpSummary) {
+        this.flushAdditionCompletionRewards();
+      }
     }
   }
 
