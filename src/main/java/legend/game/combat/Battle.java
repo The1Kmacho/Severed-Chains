@@ -2356,7 +2356,7 @@ public class Battle extends EngineState<Battle> {
       cameraVector.div(distance);
     }
 
-    final float safeDistance = java.lang.Math.max(3200.0f, java.lang.Math.min(4600.0f, distance));
+    final float safeDistance = java.lang.Math.max(4000.0f, java.lang.Math.min(5200.0f, distance));
     final Vector3f viewpoint = new Vector3f(focus).add(cameraVector.mul(safeDistance));
 
     this.camera_800c67f0.resetCameraMovement();

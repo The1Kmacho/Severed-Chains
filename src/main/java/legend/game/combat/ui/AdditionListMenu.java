@@ -142,7 +142,7 @@ public class AdditionListMenu extends ListMenu {
 
         //Selected item description
         if(this.description == null) {
-          this.description = new UiBox(44, 150, 232, 26);
+          this.description = new UiBox(10, 150, 300, 26);
         }
 
         this.description.render(CONFIG.getConfig(UI_BACKGROUND_COLOUR.get()));
