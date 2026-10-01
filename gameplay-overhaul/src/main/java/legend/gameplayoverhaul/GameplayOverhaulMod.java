@@ -545,27 +545,27 @@ public final class GameplayOverhaulMod {
       event.effects.add("BRK" + BREAK_GAUGE.getOrDefault(monster, 0));
 
       if(monster.physicalImmunity_110 || (monster.damageReductionFlags_6e & 0x8) != 0) {
-        event.effects.add("PHY IMM");
+        event.effects.add("P-IMM");
       } else if(monster.physicalResistance_114 || (monster.damageReductionFlags_6e & 0x2) != 0) {
-        event.effects.add("PHY RES");
+        event.effects.add("P-RES");
       }
 
       if(monster.magicalImmunity_112 || (monster.damageReductionFlags_6e & 0x4) != 0) {
-        event.effects.add("MAG IMM");
+        event.effects.add("M-IMM");
       } else if(monster.magicalResistance_116 || (monster.damageReductionFlags_6e & 0x1) != 0) {
-        event.effects.add("MAG RES");
+        event.effects.add("M-RES");
       }
 
       if(monster.monsterStatusResistFlag_76 == 0xff || (monster.specialEffectFlag_14 & 0x80) != 0) {
-        event.effects.add("STATUS IMM");
+        event.effects.add("ST-IMM");
       }
 
       if(event.battle.currentTurnBent_800c66c8 != null
         && event.battle.currentTurnBent_800c66c8.innerStruct_00 instanceof final PlayerBattleEntity currentPlayer) {
         if(currentPlayer.getElement().isStrongAgainst(monster.getElement())) {
-          event.effects.add("ELEM WEAK");
+          event.effects.add("E-WEAK");
         } else if(currentPlayer.getElement().isWeakAgainst(monster.getElement())) {
-          event.effects.add("ELEM RES");
+          event.effects.add("E-RES");
         }
       }
     }
