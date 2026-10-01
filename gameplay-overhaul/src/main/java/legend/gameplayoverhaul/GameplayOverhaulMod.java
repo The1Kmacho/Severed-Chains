@@ -516,12 +516,14 @@ public final class GameplayOverhaulMod {
       "break_defense_down",
       "guard_defense"
     );
-    appendMomentumStatEffect(
-      event,
-      event.entity.stats.getStat(LodMod.DRAGOON_ATTACK_STAT.get()),
-      "D-ATK",
-      "perfect_d_attack"
-    );
+    if(event.entity instanceof PlayerBattleEntity) {
+      appendMomentumStatEffect(
+        event,
+        event.entity.stats.getStat(LodMod.DRAGOON_ATTACK_STAT.get()),
+        "D-ATK",
+        "perfect_d_attack"
+      );
+    }
     appendMomentumStatEffect(
       event,
       event.entity.stats.getStat(LodMod.SPEED_STAT.get()),
@@ -1134,6 +1136,10 @@ public final class GameplayOverhaulMod {
     final String label,
     final String... keys
   ) {
+    if(stat == null) {
+      return;
+    }
+
     int amount = 0;
     int turns = 0;
 
