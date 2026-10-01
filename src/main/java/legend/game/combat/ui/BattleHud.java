@@ -86,7 +86,6 @@ import static legend.game.modding.coremod.CoreMod.INPUT_ACTION_MENU_LEFT;
 import static legend.game.modding.coremod.CoreMod.INPUT_ACTION_MENU_RIGHT;
 import static legend.game.modding.coremod.CoreMod.INPUT_ACTION_MENU_UP;
 import static legend.game.sound.Audio.playMenuSound;
-import static legend.lodmod.LodBattleActions.ADDITIONS;
 import static legend.lodmod.LodBattleActions.ESCAPE;
 import static legend.lodmod.LodBattleActions.GUARD;
 import static legend.lodmod.LodBattleActions.ITEMS;
@@ -94,7 +93,6 @@ import static legend.lodmod.LodBattleActions.SPECIAL;
 import static legend.lodmod.LodBattleActions.SPELLS;
 import static legend.lodmod.LodBattleActions.TRANSFORM;
 import static legend.lodmod.LodConfig.UI_BACKGROUND_COLOUR;
-import static legend.lodmod.LodMod.INPUT_ACTION_BTTL_ADDITIONS;
 import static legend.lodmod.LodMod.INPUT_ACTION_BTTL_ESCAPE;
 import static legend.lodmod.LodMod.INPUT_ACTION_BTTL_GUARD;
 import static legend.lodmod.LodMod.INPUT_ACTION_BTTL_ITEMS;
@@ -219,6 +217,9 @@ public class BattleHud {
   public List<ElementIcon> currentAttackElements = new ArrayList<>();
 
   private boolean closeMenu;
+
+  private BattleAction additionAttackSourceAction;
+  private BattleAction queuedBattleAction;
 
   public BattleHud(final Battle battle) {
     this.battle = battle;
@@ -1317,6 +1318,33 @@ public class BattleHud {
     this.addFloatingNumberForBent(bentIndex, 0, 2, damage, this.clampX(screenCoords.x + centreScreenX_1f8003dc), this.clampY(screenCoords.y + centreScreenY_1f8003de), 60 / vsyncMode_8007a3b8 / 4, colour);
   }
 
+  public void beginAdditionAttackSelection(final BattleAction attackAction) {
+    this.additionAttackSourceAction = attackAction;
+    this.queuedBattleAction = null;
+  }
+
+  public boolean isAdditionAttackSelectionActive() {
+    return this.additionAttackSourceAction != null;
+  }
+
+  public void completeAdditionAttackSelection() {
+    if(this.additionAttackSourceAction != null) {
+      this.queuedBattleAction = this.additionAttackSourceAction;
+      this.additionAttackSourceAction = null;
+    }
+  }
+
+  public void cancelAdditionAttackSelection() {
+    this.additionAttackSourceAction = null;
+    this.queuedBattleAction = null;
+  }
+
+  private BattleAction consumeQueuedBattleAction() {
+    final BattleAction action = this.queuedBattleAction;
+    this.queuedBattleAction = null;
+    return action;
+  }
+
   private void onListClose() {
     LOGGER.info(BATTLE, "Player closed %s", this.listMenu_800c6b60.getClass().getSimpleName());
     this.listMenu_800c6b60 = null;
@@ -1405,6 +1433,11 @@ public class BattleHud {
    */
   @Method(0x800f6330L)
   public BattleAction tickAndRender() {
+    final BattleAction queuedAction = this.consumeQueuedBattleAction();
+    if(queuedAction != null) {
+      return queuedAction;
+    }
+
     if(this.battleMenu_800c6c34.state_00 == 0) {
       return null;
     }
@@ -1588,8 +1621,6 @@ public class BattleHud {
           selectedAction = this.useAction(ITEMS.get());
         } else if(PLATFORM.isActionPressed(INPUT_ACTION_BTTL_SPELLS.get())) {
           selectedAction = this.useAction(SPELLS.get());
-        } else if(PLATFORM.isActionPressed(INPUT_ACTION_BTTL_ADDITIONS.get())) {
-          selectedAction = this.useAction(ADDITIONS.get());
         }
 
         // Input for pressing X on menu bar
