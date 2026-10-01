@@ -1,6 +1,9 @@
 package legend.lodmod.characters;
 
 import legend.game.additions.AdditionHits80;
+import legend.game.characters.AdditionLevelUnlockCriterion;
+import legend.game.characters.AdditionMasteryUnlockCriterion;
+import legend.game.characters.CharacterAdditionInfo;
 import legend.game.characters.CharacterData2c;
 import legend.game.characters.CharacterSpellInfo;
 import legend.game.characters.Element;
@@ -14,6 +17,7 @@ import legend.game.types.EquipmentSlot;
 import legend.game.types.GameState52c;
 import legend.game.unpacker.FileData;
 import legend.game.unpacker.Loader;
+import legend.lodmod.LodAdditions;
 import legend.lodmod.LodSpells;
 
 import java.nio.file.Path;
@@ -37,12 +41,23 @@ public class ShanaTemplate extends RetailCharacterTemplate {
   protected CharacterData2c makeCharacter(final GameState52c gameState) {
     final CharacterData2c character = super.makeCharacter(gameState);
 
+    this.addArcherAdditions(character);
+
     character.addSpell(LodSpells.MOON_LIGHT.getId(), new CharacterSpellInfo(List.of(new SpellDragoonSpiritUnlockCriterion()))).unlock(gameState.timestamp_a0);
     character.addSpell(LodSpells.STAR_CHILDREN.getId(), new CharacterSpellInfo(List.of(new SpellDragoonSpiritUnlockCriterion(), new SpellDragoonLevelUnlockCriterion(2))));
     character.addSpell(LodSpells.GATES_OF_HEAVEN.getId(), new CharacterSpellInfo(List.of(new SpellDragoonSpiritUnlockCriterion(), new SpellDragoonLevelUnlockCriterion(3))));
     character.addSpell(LodSpells.WHITE_SILVER_DRAGON.getId(), new CharacterSpellInfo(List.of(new SpellDragoonSpiritUnlockCriterion(), new SpellDragoonLevelUnlockCriterion(5))));
 
     return character;
+  }
+
+  protected void addArcherAdditions(final CharacterData2c character) {
+    character.addAddition(LodAdditions.QUICK_DRAW.getId(), new CharacterAdditionInfo(List.of()));
+    character.addAddition(LodAdditions.PINPOINT.getId(), new CharacterAdditionInfo(List.of(new AdditionLevelUnlockCriterion(8))));
+    character.addAddition(LodAdditions.PIERCING_ARROW.getId(), new CharacterAdditionInfo(List.of(new AdditionLevelUnlockCriterion(16))));
+    character.addAddition(LodAdditions.SPIRIT_SHOT.getId(), new CharacterAdditionInfo(List.of(new AdditionLevelUnlockCriterion(24))));
+    character.addAddition(LodAdditions.MOONSHOT.getId(), new CharacterAdditionInfo(List.of(new AdditionMasteryUnlockCriterion())));
+    character.selectedAddition_19 = LodAdditions.QUICK_DRAW.getId();
   }
 
   @Override
