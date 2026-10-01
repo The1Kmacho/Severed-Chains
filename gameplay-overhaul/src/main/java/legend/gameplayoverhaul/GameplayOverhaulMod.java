@@ -764,14 +764,17 @@ public final class GameplayOverhaulMod {
       attackDirection.set(0.0f, 0.0f, 1.0f);
     }
 
-    // Close attacks can punch in harder; long approaches keep more battlefield
-    // context. Camera side/orientation is still preserved.
-    final float refpointTravel = java.lang.Math.min(
-      attackDistance > 2400.0f ? 320.0f : 520.0f,
-      attackDistance * (attackDistance > 2400.0f ? 0.12f : 0.22f)
-    );
-    final Vector3f desiredRefpoint = new Vector3f(savedCameraRefpoint)
-      .add(new Vector3f(attackDirection).mul(refpointTravel));
+    // Reframe toward the space between attacker and defender instead of only
+    // nudging along the attack vector. Keep the current camera ray so this is
+    // still a stable world-space pan/dolly with no orbit or yaw.
+    final Vector3f combatCenter = new Vector3f(attackerPos).lerp(defenderPos, 0.55f);
+    final Vector3f refpointDelta = new Vector3f(combatCenter).sub(savedCameraRefpoint);
+    final float refpointDistance = refpointDelta.length();
+    final float maxRefpointTravel = attackDistance > 2400.0f ? 900.0f : 1300.0f;
+    if(refpointDistance > maxRefpointTravel && refpointDistance > 0.001f) {
+      refpointDelta.mul(maxRefpointTravel / refpointDistance);
+    }
+    final Vector3f desiredRefpoint = new Vector3f(savedCameraRefpoint).add(refpointDelta);
 
     final Vector3f cameraRay = new Vector3f(savedCameraViewpoint).sub(savedCameraRefpoint);
     final float cameraDistance = cameraRay.length();
@@ -781,15 +784,15 @@ public final class GameplayOverhaulMod {
     }
 
     cameraRay.div(cameraDistance);
-    final float dollyDistance =
-      attackDistance > 2400.0f ? 800.0f :
-      attackDistance > 1400.0f ? 1150.0f :
-      1500.0f;
-    final float desiredDistance = java.lang.Math.max(1250.0f, cameraDistance - dollyDistance);
+    final float distanceScale =
+      attackDistance > 2400.0f ? 0.58f :
+      attackDistance > 1400.0f ? 0.48f :
+      0.40f;
+    final float desiredDistance = java.lang.Math.max(700.0f, cameraDistance * distanceScale);
     final Vector3f desiredViewpoint = new Vector3f(desiredRefpoint)
       .add(cameraRay.mul(desiredDistance));
 
-    final int cameraTicks = java.lang.Math.max(7, java.lang.Math.min(12, expectedImpactTicks));
+    final int cameraTicks = java.lang.Math.max(6, java.lang.Math.min(9, expectedImpactTicks));
 
     // Mode 0 is world-space translation: no angle interpolation, no orbit.
     // Smoothing mode 1 eases into the final framing instead of accelerating

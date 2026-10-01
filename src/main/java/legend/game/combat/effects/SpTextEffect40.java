@@ -111,7 +111,7 @@ public class SpTextEffect40 implements ScriptedObject {
         x = charArray[i].x_00 >> 8;
         y = charArray[i].y_04 >> 8;
 
-        if(this._01 != 0) {
+        if(this._01 != 0 && this.rewardText == null) {
           battleUiParts.queueBigNumber(10, x, y, packedClut, Translucency.B_PLUS_F, brightness, 1.0f, 1.0f);
           x += 8;
         }
