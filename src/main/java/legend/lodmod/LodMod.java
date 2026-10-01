@@ -703,10 +703,6 @@ public class LodMod {
       event.actions.put(LodBattleActions.ITEMS.get(), sort);
       sort += 100;
 
-      if(!player.character.getUnlockedAdditions().isEmpty()) {
-        event.actions.put(LodBattleActions.ADDITIONS.get(), sort);
-        sort += 100;
-      }
     }
 
     if(player.isDragoon()) {
