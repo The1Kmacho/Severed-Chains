@@ -24,10 +24,12 @@ import legend.game.modding.events.battle.BattleEntityTurnEvent;
 import legend.game.modding.events.battle.BattleEndedEvent;
 import legend.game.modding.events.battle.BattleIntroCameraEvent;
 import legend.game.modding.events.battle.PlayerAttackPreparedEvent;
+import legend.game.modding.events.battle.GuardUsedEvent;
 import legend.game.modding.events.battle.IncomingAttackCueEvent;
 import legend.game.modding.events.characters.AdditionDescriptionEvent;
 import legend.game.modding.events.characters.DragoonAdditionCompletedEvent;
 import legend.game.modding.events.input.InputPressedEvent;
+import legend.game.inventory.screens.TextColour;
 import legend.lodmod.LodAdditions;
 import legend.lodmod.LodMod;
 import legend.lodmod.additions.ArcherAddition;
@@ -60,6 +62,14 @@ public final class GameplayOverhaulMod {
   private static final int DEFAULT_PARRY_CUE_TICKS = 18;
   private static final int GUARD_ANIMATION_INDEX = 5;
   private static final int PARRY_GUARD_EFFECT_TICKS = 12;
+  private static final int BREAK_THRESHOLD = 100;
+  private static final int BREAK_ADDITION_GAIN = 25;
+  private static final int BREAK_FINAL_ADDITION_GAIN = 35;
+  private static final int BREAK_PARRY_GAIN = 18;
+  private static final int CHAIN_SP_BONUS = 5;
+
+  private static final Map<MonsterBattleEntity, Integer> BREAK_GAUGE = new HashMap<>();
+  private static final Map<Integer, RegistryId> LAST_COMPLETED_ADDITIONS = new HashMap<>();
 
   private static int lastParryTick = Integer.MIN_VALUE;
   private static int negatedAttackTick = Integer.MIN_VALUE;
@@ -175,6 +185,7 @@ public final class GameplayOverhaulMod {
       if(activeCueAttacker == event.attacker && activeCueDefender == event.defender) {
         cancelParryCue();
       }
+      event.battle.hud.showEffectNotification("SPECIAL - NO PARRY", TextColour.PURPLE);
       return;
     }
 
@@ -234,6 +245,18 @@ public final class GameplayOverhaulMod {
     if(activeArcherPlayer != null) {
       clearArcherAdditionState();
     }
+    BREAK_GAUGE.clear();
+    LAST_COMPLETED_ADDITIONS.clear();
+  }
+
+  @EventListener
+  public static void guardUsed(final GuardUsedEvent event) {
+    setDefense(event.player, "guard_defense", 25, selfEffectTurns(1));
+    event.player.stats.getStat(LodMod.MAGIC_DEFENSE_STAT.get()).addMod(
+      new RegistryId(MOD_ID, "guard_magic_defense"),
+      LodMod.UNARY_STAT_MOD_TYPE.get().make(new UnaryStatModConfig().percent(25).turns(selfEffectTurns(1)))
+    );
+    event.battle.hud.showEffectNotification("GUARD+ DEF / STATUS", TextColour.CYAN);
   }
 
   @EventListener
@@ -265,6 +288,9 @@ public final class GameplayOverhaulMod {
           lastParryTick = Integer.MIN_VALUE;
           markNegatedAttack(event.defender);
           playParryReaction((PlayerBattleEntity)event.defender);
+          if(event.attacker instanceof final MonsterBattleEntity monster) {
+            addBreak(monster, BREAK_PARRY_GAIN, false);
+          }
           LOGGER.info("[Gameplay Overhaul] PARRY");
           return;
         }
@@ -310,6 +336,12 @@ public final class GameplayOverhaulMod {
 
   @EventListener
   public static void specialEffect(final AttackSpecialEffectEvent event) {
+    if(event.effect > 0
+      && event.defender instanceof final PlayerBattleEntity guarded
+      && guarded.stats.getStat(LodMod.DEFENSE_STAT.get()).hasMod(new RegistryId(MOD_ID, "guard_defense"))) {
+      event.effect = -1;
+    }
+
     if(event.defender == negatedDefender && tickCount_800bb0fc == negatedAttackTick) {
       event.effect = -1;
       negatedDefender = null;
@@ -480,7 +512,9 @@ public final class GameplayOverhaulMod {
       "hard_blade_defense_down",
       "five_ring_defense_down",
       "pursuit_defense_down",
-      "piercing_arrow_defense_down"
+      "piercing_arrow_defense_down",
+      "break_defense_down",
+      "guard_defense"
     );
     appendMomentumStatEffect(
       event,
@@ -496,6 +530,39 @@ public final class GameplayOverhaulMod {
       "cats_cradle_slow",
       "quick_draw_speed"
     );
+
+    if(event.entity.stats.getStat(LodMod.DEFENSE_STAT.get()).hasMod(new RegistryId(MOD_ID, "guard_defense"))) {
+      event.effects.add("GUARD");
+    }
+
+    if(event.entity instanceof final MonsterBattleEntity monster) {
+      event.effects.add("BRK" + BREAK_GAUGE.getOrDefault(monster, 0));
+
+      if(monster.physicalImmunity_110 || (monster.damageReductionFlags_6e & 0x8) != 0) {
+        event.effects.add("PHY IMM");
+      } else if(monster.physicalResistance_114 || (monster.damageReductionFlags_6e & 0x2) != 0) {
+        event.effects.add("PHY RES");
+      }
+
+      if(monster.magicalImmunity_112 || (monster.damageReductionFlags_6e & 0x4) != 0) {
+        event.effects.add("MAG IMM");
+      } else if(monster.magicalResistance_116 || (monster.damageReductionFlags_6e & 0x1) != 0) {
+        event.effects.add("MAG RES");
+      }
+
+      if(monster.monsterStatusResistFlag_76 == 0xff || (monster.specialEffectFlag_14 & 0x80) != 0) {
+        event.effects.add("STATUS IMM");
+      }
+
+      if(event.battle.currentTurnBent_800c66c8 != null
+        && event.battle.currentTurnBent_800c66c8.innerStruct_00 instanceof final PlayerBattleEntity currentPlayer) {
+        if(currentPlayer.getElement().isStrongAgainst(monster.getElement())) {
+          event.effects.add("ELEM WEAK");
+        } else if(currentPlayer.getElement().isWeakAgainst(monster.getElement())) {
+          event.effects.add("ELEM RES");
+        }
+      }
+    }
   }
 
   @EventListener
@@ -517,6 +584,20 @@ public final class GameplayOverhaulMod {
         event.successfulCircles,
         character.selectedAddition_19
       );
+    }
+
+    if(event.perfect()) {
+      for(final var state : battleState_8006e398.playerBents_e40) {
+        final PlayerBattleEntity player = state.innerStruct_00;
+        if(player.charId_272 == event.charId) {
+          player.stats.getStat(LodMod.DRAGOON_ATTACK_STAT.get()).addMod(
+            new RegistryId(MOD_ID, "perfect_d_attack"),
+            LodMod.UNARY_STAT_MOD_TYPE.get().make(new UnaryStatModConfig().percent(20).turns(selfEffectTurns(1)))
+          );
+          event.battle.hud.showEffectNotification("PERFECT: D-ATK+20%", TextColour.GOLD);
+          break;
+        }
+      }
     }
   }
 
@@ -675,9 +756,12 @@ public final class GameplayOverhaulMod {
       attackDirection.set(0.0f, 0.0f, 1.0f);
     }
 
-    // A small framing shift prevents the shot feeling pinned to the centre,
-    // without dragging the camera all the way around the attacker.
-    final float refpointTravel = java.lang.Math.min(320.0f, attackDistance * 0.14f);
+    // Close attacks can punch in harder; long approaches keep more battlefield
+    // context. Camera side/orientation is still preserved.
+    final float refpointTravel = java.lang.Math.min(
+      attackDistance > 2400.0f ? 220.0f : 340.0f,
+      attackDistance * (attackDistance > 2400.0f ? 0.09f : 0.15f)
+    );
     final Vector3f desiredRefpoint = new Vector3f(savedCameraRefpoint)
       .add(new Vector3f(attackDirection).mul(refpointTravel));
 
@@ -689,7 +773,11 @@ public final class GameplayOverhaulMod {
     }
 
     cameraRay.div(cameraDistance);
-    final float desiredDistance = java.lang.Math.max(1400.0f, cameraDistance - 700.0f);
+    final float dollyDistance =
+      attackDistance > 2400.0f ? 480.0f :
+      attackDistance > 1400.0f ? 700.0f :
+      900.0f;
+    final float desiredDistance = java.lang.Math.max(1400.0f, cameraDistance - dollyDistance);
     final Vector3f desiredViewpoint = new Vector3f(desiredRefpoint)
       .add(cameraRay.mul(desiredDistance));
 
@@ -780,8 +868,15 @@ public final class GameplayOverhaulMod {
       notification = "+STUN";
     }
 
-    if(notification != null && currentEngineState_8004dd04 instanceof final Battle battle) {
-      battle.hud.showEffectNotification(notification);
+    if(currentEngineState_8004dd04 instanceof final Battle battle) {
+      queueChainReward(player, id, battle);
+      if(defender instanceof final MonsterBattleEntity monster) {
+        final Addition addition = REGISTRIES.additions.getEntry(id).get();
+        addBreak(monster, isFinal(addition) ? BREAK_FINAL_ADDITION_GAIN : BREAK_ADDITION_GAIN, true);
+      }
+      if(notification != null) {
+        battle.queueAdditionCompletionReward(shortReward(notification));
+      }
     }
   }
 
@@ -894,9 +989,75 @@ public final class GameplayOverhaulMod {
       notification = "+50% ATK (3T)";
     }
 
-    if(notification != null && currentEngineState_8004dd04 instanceof final Battle battle) {
-      battle.hud.showEffectNotification(notification);
+    if(currentEngineState_8004dd04 instanceof final Battle battle) {
+      queueChainReward(player, id, battle);
+      if(defender instanceof final MonsterBattleEntity monster) {
+        final Addition addition = REGISTRIES.additions.getEntry(id).get();
+        addBreak(monster, isFinal(addition) ? BREAK_FINAL_ADDITION_GAIN : BREAK_ADDITION_GAIN, true);
+      }
+      if(notification != null) {
+        battle.queueAdditionCompletionReward(shortReward(notification));
+      }
     }
+  }
+
+  private static void queueChainReward(final PlayerBattleEntity player, final RegistryId id, final Battle battle) {
+    final RegistryId previous = LAST_COMPLETED_ADDITIONS.put(player.charId_272, id);
+    if(previous != null && !previous.equals(id)) {
+      grantSp(player, CHAIN_SP_BONUS);
+      battle.queueAdditionCompletionReward("+5 SP CHAIN");
+    }
+  }
+
+  private static void addBreak(final MonsterBattleEntity monster, final int amount, final boolean additionPipeline) {
+    final int next = java.lang.Math.min(BREAK_THRESHOLD, BREAK_GAUGE.getOrDefault(monster, 0) + amount);
+    if(next < BREAK_THRESHOLD) {
+      BREAK_GAUGE.put(monster, next);
+      return;
+    }
+
+    BREAK_GAUGE.put(monster, 0);
+    monster.turnValue_4c = java.lang.Math.max(0, monster.turnValue_4c - 0x6d);
+    setDefense(monster, "break_defense_down", -20, 2);
+
+    if(currentEngineState_8004dd04 instanceof final Battle battle) {
+      if(additionPipeline) {
+        battle.queueAdditionCompletionReward("+BREAK");
+      } else {
+        battle.hud.showEffectNotification("BREAK!", TextColour.GOLD);
+      }
+    }
+  }
+
+  private static String shortReward(final String notification) {
+    if(notification.startsWith("ENEMY DEF -")) {
+      return "+DEF DOWN " + notification.replaceAll("\\D+", "") + " 3T";
+    }
+    if(notification.startsWith("ENEMY ATK -")) {
+      return "+ATK DOWN";
+    }
+    if(notification.startsWith("ENEMY SPD -")) {
+      return "+SPD DOWN";
+    }
+    if(notification.contains("ATK")) {
+      return "+ATK " + extractTurns(notification);
+    }
+    if(notification.contains("DEF")) {
+      return "+DEF " + extractTurns(notification);
+    }
+    if(notification.contains("SPD")) {
+      return "+SPD " + extractTurns(notification);
+    }
+    if(notification.contains("HP")) {
+      return "+HP";
+    }
+    return notification.startsWith("+") ? notification : "+" + notification;
+  }
+
+  private static String extractTurns(final String notification) {
+    final int start = notification.indexOf('(');
+    final int end = notification.indexOf(')', start + 1);
+    return start >= 0 && end > start ? notification.substring(start + 1, end) : "";
   }
 
   private static boolean isAddition(final RegistryId id, final RegistryId... candidates) {
