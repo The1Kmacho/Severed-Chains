@@ -117,6 +117,7 @@ import legend.game.modding.events.battle.LoadEnemyEvent;
 import legend.game.modding.events.battle.IncomingAttackCueEvent;
 import legend.game.modding.events.battle.BattleIntroCameraEvent;
 import legend.game.modding.events.battle.MonsterStatsEvent;
+import legend.game.modding.events.battle.PlayerAttackPreparedEvent;
 import legend.game.scripting.FlowControl;
 import legend.game.scripting.Param;
 import legend.game.scripting.RunningScript;
@@ -1276,6 +1277,7 @@ public class Battle extends EngineState<Battle> {
       weapon.prepareAttack(script.scriptState_04);
     }
 
+    EVENTS.postEvent(new PlayerAttackPreparedEvent(this, player, ticks));
     script.params_20[0].set(ticks);
     return FlowControl.CONTINUE;
   }
