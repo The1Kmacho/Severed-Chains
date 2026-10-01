@@ -5335,8 +5335,15 @@ public class Battle extends EngineState<Battle> {
   }
 
   public void queueAdditionCompletionReward(final String text) {
-    if(text != null && !text.isBlank()) {
-      this.pendingAdditionRewardTexts.add(text.toUpperCase());
+    if(text == null || text.isBlank()) {
+      return;
+    }
+
+    final String reward = text.toUpperCase();
+    if(this._800faa94 != 0) {
+      this.allocateAdditionRewardText(reward);
+    } else {
+      this.pendingAdditionRewardTexts.add(reward);
     }
   }
 
@@ -5352,25 +5359,29 @@ public class Battle extends EngineState<Battle> {
     }
 
     for(final String text : this.pendingAdditionRewardTexts) {
-      final SpTextEffect40 reward = new SpTextEffect40();
-      final ScriptState<SpTextEffect40> state = SCRIPTS.allocateScriptState("AdditionRewardText", reward);
-      state.loadScriptFile(doNothingScript_8004f650);
-      state.setTicker((s, effect) -> reward.tickSpTextEffect(s, this._800faa94));
-
-      reward.rewardText = text;
-      reward.destX_1c = this._800faa90 << 8;
-      reward._01 = ++this._800faa92;
-      reward.stepX_2c = (reward.destX_1c - reward.x_0c) / 14;
-
-      for(int i = 0; i < reward.charArray_3c.length; i++) {
-        reward.charArray_3c[i].x_00 = reward.x_0c;
-        reward.charArray_3c[i].y_04 = reward.y_10;
-      }
-
-      this._800faa90 = (reward.destX_1c >> 8) + text.length() * 8 + 5;
+      this.allocateAdditionRewardText(text);
     }
 
     this.pendingAdditionRewardTexts.clear();
+  }
+
+  private void allocateAdditionRewardText(final String text) {
+    final SpTextEffect40 reward = new SpTextEffect40();
+    final ScriptState<SpTextEffect40> state = SCRIPTS.allocateScriptState("AdditionRewardText", reward);
+    state.loadScriptFile(doNothingScript_8004f650);
+    state.setTicker((s, effect) -> reward.tickSpTextEffect(s, this._800faa94));
+
+    reward.rewardText = text;
+    reward.destX_1c = this._800faa90 << 8;
+    reward._01 = ++this._800faa92;
+    reward.stepX_2c = (reward.destX_1c - reward.x_0c) / 14;
+
+    for(int i = 0; i < reward.charArray_3c.length; i++) {
+      reward.charArray_3c[i].x_00 = reward.x_0c;
+      reward.charArray_3c[i].y_04 = reward.y_10;
+    }
+
+    this._800faa90 = (reward.destX_1c >> 8) + text.length() * 8 + 5;
   }
 
   @ScriptDescription("Allocates an addition name effect manager")

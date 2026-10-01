@@ -223,6 +223,7 @@ public class BattleHud {
     .size(0.9f)
     .shadowColour(TextColour.BLACK);
   private String effectNotification;
+  private TextColour effectNotificationColour = TextColour.GOLD;
   private int effectNotificationStartTick = Integer.MIN_VALUE;
 
   public Texture battleIconsTexture;
@@ -861,7 +862,12 @@ public class BattleHud {
   }
 
   public void showEffectNotification(final String text) {
+    this.showEffectNotification(text, TextColour.GOLD);
+  }
+
+  public void showEffectNotification(final String text, final TextColour colour) {
     this.effectNotification = text;
+    this.effectNotificationColour = colour;
     this.effectNotificationStartTick = tickCount_800bb0fc;
   }
 
@@ -879,9 +885,9 @@ public class BattleHud {
     final int y = 158 - java.lang.Math.min(age, 12) / 2;
     final float brightness = age < 28 ? 1.0f : java.lang.Math.max(0.0f, (40 - age) / 12.0f);
     this.effectNotificationFont.colour(
-      TextColour.GOLD.r / 255.0f * brightness,
-      TextColour.GOLD.g / 255.0f * brightness,
-      TextColour.GOLD.b / 255.0f * brightness
+      this.effectNotificationColour.r / 255.0f * brightness,
+      this.effectNotificationColour.g / 255.0f * brightness,
+      this.effectNotificationColour.b / 255.0f * brightness
     );
     renderText(this.effectNotification, 160, y, this.effectNotificationFont);
   }
