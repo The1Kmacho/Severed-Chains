@@ -443,11 +443,9 @@ public final class GameplayOverhaulMod {
     savedCameraRefpoint.set(camera.rview2_00.refpoint_0c);
     parryCameraActive = true;
 
-    // Retail Additions do not pin the camera to the centre of the action. They
-    // nudge the current refpoint between hits, then orbit/zoom the viewpoint in
-    // angle+magnitude space (camera mode 5). Do the same for the parry cue so
-    // the attacker travels through the frame instead of the frame being glued
-    // to either combatant.
+    // Keep the current camera side and orientation. Counter readability is more
+    // important than creating a dramatic orbit: gently pan the shot toward the
+    // incoming attack and dolly straight inward along the existing camera ray.
     final Vector3f attackerPos = new Vector3f(attacker.getPosition())
       .add(0.0f, -attacker.middleOffsetY_86 * 50.0f, 0.0f);
     final Vector3f defenderPos = new Vector3f(defender.getPosition())
@@ -461,40 +459,48 @@ public final class GameplayOverhaulMod {
       attackDirection.set(0.0f, 0.0f, 1.0f);
     }
 
-    final float refpointTravel = java.lang.Math.min(360.0f, attackDistance * 0.18f);
+    // A small framing shift prevents the shot feeling pinned to the centre,
+    // without dragging the camera all the way around the attacker.
+    final float refpointTravel = java.lang.Math.min(220.0f, attackDistance * 0.10f);
     final Vector3f desiredRefpoint = new Vector3f(savedCameraRefpoint)
       .add(new Vector3f(attackDirection).mul(refpointTravel));
 
-    final int cameraTicks = java.lang.Math.max(8, java.lang.Math.min(24, expectedImpactTicks));
+    final Vector3f cameraRay = new Vector3f(savedCameraViewpoint).sub(savedCameraRefpoint);
+    final float cameraDistance = cameraRay.length();
 
-    camera.cameraMoveRefpoint(
+    if(cameraDistance <= 0.001f) {
+      return;
+    }
+
+    cameraRay.div(cameraDistance);
+    final float desiredDistance = java.lang.Math.max(1400.0f, cameraDistance - 320.0f);
+    final Vector3f desiredViewpoint = new Vector3f(desiredRefpoint)
+      .add(cameraRay.mul(desiredDistance));
+
+    final int cameraTicks = java.lang.Math.max(10, java.lang.Math.min(20, expectedImpactTicks));
+
+    // Mode 0 is world-space translation: no angle interpolation, no orbit.
+    // Smoothing mode 1 eases into the final framing instead of accelerating
+    // through it.
+    camera.cameraAccelerateRefpoint(
       0,
       desiredRefpoint.x,
       desiredRefpoint.y,
       desiredRefpoint.z,
-      0,
       cameraTicks,
+      1,
+      0.0f,
       0,
       null
     );
-
-    final float angleX = camera.calculateCameraValue(false, 5, 0, null);
-    float angleY = camera.calculateCameraValue(false, 5, 1, null);
-    float magnitude = camera.calculateCameraValue(false, 5, 2, null);
-
-    final Vector3f cameraVector = new Vector3f(savedCameraViewpoint).sub(savedCameraRefpoint);
-    final float side = cameraVector.x * attackDirection.z - cameraVector.z * attackDirection.x;
-    angleY += (side >= 0.0f ? 1.0f : -1.0f) * (float)(java.lang.Math.PI * 2.0 * 0x50 / 4096.0);
-    magnitude = java.lang.Math.max(1200.0f, magnitude - 320.0f);
-
     camera.cameraAccelerateViewpoint(
-      5,
-      angleX,
-      angleY,
-      magnitude,
+      0,
+      desiredViewpoint.x,
+      desiredViewpoint.y,
+      desiredViewpoint.z,
       cameraTicks,
       1,
-      1.0f,
+      0.0f,
       0,
       null
     );
@@ -514,8 +520,8 @@ public final class GameplayOverhaulMod {
       savedCameraViewpoint.x,
       savedCameraViewpoint.y,
       savedCameraViewpoint.z,
-      8,
-      0,
+      10,
+      1,
       0.0f,
       0,
       null
@@ -525,8 +531,8 @@ public final class GameplayOverhaulMod {
       savedCameraRefpoint.x,
       savedCameraRefpoint.y,
       savedCameraRefpoint.z,
-      8,
-      0,
+      10,
+      1,
       0.0f,
       0,
       null
