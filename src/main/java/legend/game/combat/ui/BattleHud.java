@@ -17,6 +17,7 @@ import legend.core.renderer.QueuedModelStandard;
 import legend.core.renderer.Texture;
 import legend.core.renderer.Translucency;
 import legend.game.characters.Element;
+import legend.game.characters.UnaryStatMod;
 import legend.game.characters.VitalsStat;
 import legend.game.combat.Battle;
 import legend.game.combat.bent.BattleEntity27c;
@@ -31,6 +32,9 @@ import legend.game.combat.types.BattleHudStatLabelMetrics0c;
 import legend.game.inventory.WhichMenu;
 import legend.game.inventory.screens.BattleOptionsCategoryScreen;
 import legend.game.inventory.screens.FontOptions;
+import legend.game.inventory.screens.HorizontalAlign;
+import legend.game.inventory.screens.TextColour;
+import legend.game.modding.events.battle.BattleEffectDisplayEvent;
 import legend.game.modding.events.battle.StatDisplayEvent;
 import legend.game.saves.ConfigStorage;
 import legend.game.saves.ConfigStorageLocation;
@@ -207,6 +211,11 @@ public class BattleHud {
   private final MV lineTransforms = new MV();
 
   public static final int ICON_SIZE = 16;
+
+  private final FontOptions effectFont = new FontOptions()
+    .colour(TextColour.CYAN)
+    .size(0.65f)
+    .shadowColour(TextColour.BLACK);
 
   public Texture battleIconsTexture;
   public Obj battleIconQuad;
@@ -573,6 +582,7 @@ public class BattleHud {
 
           // Name
           renderText(player.getName(), displayStats.x_00 + 16, displayStats.y_02 - 25, this.font);
+          this.renderBattleEffects(player, displayStats.x_00 + 16, displayStats.y_02 - 34, HorizontalAlign.LEFT);
 
           // Portrait background
           this.uiTransforms.transfer.set(displayStats.x_00 - 44, displayStats.y_02 - 22, 124.0f);
@@ -755,6 +765,7 @@ public class BattleHud {
         final int targetCombatant = menu.combatantIndex_54;
         String str;
         final Element element;
+        BattleEntity27c targetEffectBent = null;
         if(targetCombatant == -1) {  // Target all
           str = targeting_800fb36c[menu.targetType_50];
           element = LodMod.DIVINE_ELEMENT.get();
@@ -793,6 +804,7 @@ public class BattleHud {
           }
 
           element = targetBent.getElement();
+          targetEffectBent = targetBent;
 
           //LAB_800f0e60
           final int status = targetBent.status_0e;
@@ -830,9 +842,67 @@ public class BattleHud {
 
         this.battleUiName.render(element.colour);
         renderText(str, 160, 24, UI_WHITE_CENTERED);
+        if(targetEffectBent != null) {
+          this.renderBattleEffects(targetEffectBent, 160, 39, HorizontalAlign.CENTRE);
+        }
       }
     }
     //LAB_800f0f2c
+  }
+
+  private void renderBattleEffects(
+    final BattleEntity27c entity,
+    final int x,
+    final int y,
+    final HorizontalAlign align
+  ) {
+    final BattleEffectDisplayEvent event = new BattleEffectDisplayEvent(this.battle, entity);
+
+    final int status = entity.status_0e & 0xff;
+    final String[] statusLabels = {"PSN", "DSP", "WPN", "STN", "FEAR", "CNF", "BWT", "PET"};
+    for(int i = 0, mask = 0x80; i < statusLabels.length; i++, mask >>>= 1) {
+      if((status & mask) != 0) {
+        event.effects.add(statusLabels[i]);
+      }
+    }
+
+    this.appendLegacyTimedEffect(event, "ATK", entity.powerAttack_b4, entity.powerAttackTurns_b5);
+    this.appendLegacyTimedEffect(event, "DEF", entity.powerDefence_b8, entity.powerDefenceTurns_b9);
+    this.appendUnaryTimedEffect(event, entity, LodMod.id("speed_up"), "SPD");
+    this.appendUnaryTimedEffect(event, entity, LodMod.id("speed_down"), "SPD");
+
+    EVENTS.postEvent(event);
+
+    if(event.effects.isEmpty()) {
+      return;
+    }
+
+    this.effectFont.horizontalAlign(align);
+    renderText(String.join(" ", event.effects), x, y, this.effectFont);
+  }
+
+  private void appendLegacyTimedEffect(
+    final BattleEffectDisplayEvent event,
+    final String label,
+    final int amount,
+    final int turns
+  ) {
+    if(turns > 0 && amount != 0) {
+      event.effects.add(label + (amount > 0 ? "+" : "") + amount + "%(" + turns + "T)");
+    }
+  }
+
+  private void appendUnaryTimedEffect(
+    final BattleEffectDisplayEvent event,
+    final BattleEntity27c entity,
+    final RegistryId id,
+    final String label
+  ) {
+    final var stat = entity.stats.getStat(LodMod.SPEED_STAT.get());
+    if(stat.hasMod(id)) {
+      final UnaryStatMod mod = stat.getMod(id);
+      event.effects.add(label + (mod.getAmount() > 0 ? "+" : "") + mod.getAmount() + "%(" + mod.getTurns() + "T)");
+    }
   }
 
   /**

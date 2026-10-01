@@ -3,6 +3,8 @@ package legend.gameplayoverhaul;
 import legend.game.additions.Addition;
 import legend.game.characters.CharacterAdditionInfo;
 import legend.game.characters.Element;
+import legend.game.characters.UnaryStat;
+import legend.game.characters.UnaryStatMod;
 import legend.game.characters.UnaryStatModConfig;
 import legend.game.characters.VitalsStat;
 import legend.game.combat.Battle;
@@ -16,6 +18,7 @@ import legend.game.combat.effects.AdditionOverlaysEffect44;
 import legend.game.combat.effects.GenericAttachment1c;
 import legend.game.combat.effects.GuardEffect06;
 import legend.game.combat.types.AttackType;
+import legend.game.modding.events.battle.BattleEffectDisplayEvent;
 import legend.game.modding.events.battle.BattleIntroCameraEvent;
 import legend.game.modding.events.battle.IncomingAttackCueEvent;
 import legend.game.modding.events.characters.AdditionDescriptionEvent;
@@ -301,6 +304,47 @@ public final class GameplayOverhaulMod {
   }
 
   @EventListener
+  public static void battleEffectDisplay(final BattleEffectDisplayEvent event) {
+    appendMomentumStatEffect(
+      event,
+      event.entity.stats.getStat(LodMod.ATTACK_STAT.get()),
+      "ATK",
+      "double_slash_attack",
+      "crush_dance_attack_down",
+      "spinning_cane_attack_down",
+      "rod_typhoon_attack",
+      "summon_4_gods_attack",
+      "inferno_attack",
+      "bone_crush_attack"
+    );
+    appendMomentumStatEffect(
+      event,
+      event.entity.stats.getStat(LodMod.DEFENSE_STAT.get()),
+      "DEF",
+      "volcano_defense_down",
+      "moon_strike_defense_down",
+      "harpoon_defense",
+      "flower_storm_defense",
+      "hard_blade_defense_down",
+      "five_ring_defense_down",
+      "pursuit_defense_down"
+    );
+    appendMomentumStatEffect(
+      event,
+      event.entity.stats.getStat(LodMod.SPEED_STAT.get()),
+      "SPD",
+      "burning_rush_speed",
+      "madness_hero_speed",
+      "gust_speed",
+      "more_more_speed",
+      "double_punch_speed",
+      "omni_sweep_speed",
+      "hammer_spin_speed",
+      "cats_cradle_slow"
+    );
+  }
+
+  @EventListener
   public static void dragoonAdditionCompleted(final DragoonAdditionCompletedEvent event) {
     if(event.successfulCircles <= 0 || event.charId < 0 || event.charId >= gameState_800babc8.charData_32c.size()) {
       return;
@@ -392,40 +436,53 @@ public final class GameplayOverhaulMod {
     savedCameraRefpoint.set(camera.rview2_00.refpoint_0c);
     parryCameraActive = true;
 
-    // Retail Additions mostly establish a world-space action framing and then
-    // let the attacker move through it. Build the same kind of midpoint shot
-    // instead of parenting the camera directly to the enemy every tick.
+    // Retail Additions do not pin the camera to the centre of the action. They
+    // nudge the current refpoint between hits, then orbit/zoom the viewpoint in
+    // angle+magnitude space (camera mode 5). Do the same for the parry cue so
+    // the attacker travels through the frame instead of the frame being glued
+    // to either combatant.
     final Vector3f attackerPos = new Vector3f(attacker.getPosition())
       .add(0.0f, -attacker.middleOffsetY_86 * 50.0f, 0.0f);
     final Vector3f defenderPos = new Vector3f(defender.getPosition())
       .add(0.0f, -defender.middleOffsetY_86 * 50.0f, 0.0f);
+    final Vector3f attackDirection = new Vector3f(defenderPos).sub(attackerPos);
+    final float attackDistance = attackDirection.length();
 
-    final Vector3f actionFocus = new Vector3f(attackerPos)
-      .lerp(defenderPos, 0.55f);
+    if(attackDistance > 0.001f) {
+      attackDirection.div(attackDistance);
+    } else {
+      attackDirection.set(0.0f, 0.0f, 1.0f);
+    }
+
+    final float refpointTravel = java.lang.Math.min(360.0f, attackDistance * 0.18f);
+    final Vector3f desiredRefpoint = new Vector3f(savedCameraRefpoint)
+      .add(new Vector3f(attackDirection).mul(refpointTravel));
 
     camera.cameraMoveRefpoint(
       0,
-      actionFocus.x,
-      actionFocus.y,
-      actionFocus.z,
+      desiredRefpoint.x,
+      desiredRefpoint.y,
+      desiredRefpoint.z,
       0,
       6,
       0,
       null
     );
 
-    // Ease the viewpoint toward the action while preserving the original
-    // camera side. This mirrors the Addition camera's "compose then move"
-    // behavior rather than sticking to the attacker.
-    final Vector3f desiredView = new Vector3f(savedCameraViewpoint)
-      .lerp(actionFocus, 0.22f);
-    desiredView.y -= 140.0f;
+    final float angleX = camera.calculateCameraValue(false, 5, 0, null);
+    float angleY = camera.calculateCameraValue(false, 5, 1, null);
+    float magnitude = camera.calculateCameraValue(false, 5, 2, null);
+
+    final Vector3f cameraVector = new Vector3f(savedCameraViewpoint).sub(savedCameraRefpoint);
+    final float side = cameraVector.x * attackDirection.z - cameraVector.z * attackDirection.x;
+    angleY += (side >= 0.0f ? 1.0f : -1.0f) * (float)(java.lang.Math.PI * 2.0 * 0x50 / 4096.0);
+    magnitude = java.lang.Math.max(1200.0f, magnitude - 320.0f);
 
     camera.cameraAccelerateViewpoint(
-      0,
-      desiredView.x,
-      desiredView.y,
-      desiredView.z,
+      5,
+      angleX,
+      angleY,
+      magnitude,
       6,
       1,
       1.0f,
@@ -568,6 +625,7 @@ public final class GameplayOverhaulMod {
       new RegistryId(MOD_ID, key),
       LodMod.UNARY_STAT_MOD_TYPE.get().make(new UnaryStatModConfig().percent(percent).turns(turns))
     );
+    spawnMomentumPulse(entity, percent >= 0 ? MomentumVisual.POWER : MomentumVisual.DEBUFF);
   }
 
   private static void setDefense(
@@ -580,6 +638,7 @@ public final class GameplayOverhaulMod {
       new RegistryId(MOD_ID, key),
       LodMod.UNARY_STAT_MOD_TYPE.get().make(new UnaryStatModConfig().percent(percent).turns(turns))
     );
+    spawnMomentumPulse(entity, percent >= 0 ? MomentumVisual.DEFENSE : MomentumVisual.DEBUFF);
   }
 
   private static void setSpeed(
@@ -592,12 +651,71 @@ public final class GameplayOverhaulMod {
       new RegistryId(MOD_ID, key),
       LodMod.UNARY_STAT_MOD_TYPE.get().make(new UnaryStatModConfig().percent(percent).turns(turns))
     );
+    spawnMomentumPulse(entity, percent >= 0 ? MomentumVisual.SPEED : MomentumVisual.DEBUFF);
   }
 
   private static void grantSp(final PlayerBattleEntity player, final int amount) {
     final VitalsStat sp = player.stats.getStat(LodMod.SP_STAT.get());
     sp.setCurrent(sp.getCurrent() + amount);
     spGained_800bc950.mergeInt(player.character, amount, Integer::sum);
+  }
+
+  private enum MomentumVisual {
+    POWER,
+    DEFENSE,
+    SPEED,
+    DEBUFF,
+  }
+
+  private static void spawnMomentumPulse(final BattleEntity27c entity, final MomentumVisual visual) {
+    final var effectState = SEffe.allocateEffectManager(
+      "GameplayOverhaulMomentum" + visual,
+      null,
+      new GuardEffect06()
+    );
+    final var manager = effectState.innerStruct_00;
+
+    switch(visual) {
+      case POWER -> manager.params_10.colour_1c.set(0xff, 0x58, 0x20);
+      case DEFENSE -> manager.params_10.colour_1c.set(0x38, 0x88, 0xff);
+      case SPEED -> manager.params_10.colour_1c.set(0x38, 0xe0, 0xff);
+      case DEBUFF -> manager.params_10.colour_1c.set(0xb0, 0x38, 0xd8);
+    }
+
+    manager.params_10.scale_16.set(-0.32f, visual == MomentumVisual.SPEED ? 0.95f : 0.72f, 0.72f);
+    manager.params_10.trans_04.set(0.0f, -700.0f, -420.0f);
+    entity.getRelativePosition(manager.params_10.trans_04);
+
+    final GenericAttachment1c lifespan = manager.addAttachment(
+      0,
+      0,
+      SEffe::tickLifespanAttachment,
+      new GenericAttachment1c()
+    );
+    lifespan.ticksRemaining_1a = 12;
+  }
+
+  private static void appendMomentumStatEffect(
+    final BattleEffectDisplayEvent event,
+    final UnaryStat stat,
+    final String label,
+    final String... keys
+  ) {
+    int amount = 0;
+    int turns = 0;
+
+    for(final String key : keys) {
+      final RegistryId id = new RegistryId(MOD_ID, key);
+      if(stat.hasMod(id)) {
+        final UnaryStatMod mod = stat.getMod(id);
+        amount += mod.getAmount();
+        turns = java.lang.Math.max(turns, mod.getTurns());
+      }
+    }
+
+    if(amount != 0) {
+      event.effects.add(label + (amount > 0 ? "+" : "") + amount + "%(" + turns + "T)");
+    }
   }
 
   private static boolean isFinal(final Addition addition) {
