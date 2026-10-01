@@ -333,7 +333,8 @@ public final class GameplayOverhaulMod {
   }
 
   private static void focusParryCamera(final BattleEntity27c attacker) {
-    if(!(currentEngineState_8004dd04 instanceof final Battle battle)) {
+    if(!(currentEngineState_8004dd04 instanceof final Battle battle)
+      || !(activeCueDefender instanceof final PlayerBattleEntity defender)) {
       return;
     }
 
@@ -342,42 +343,45 @@ public final class GameplayOverhaulMod {
     savedCameraRefpoint.set(camera.rview2_00.refpoint_0c);
     parryCameraActive = true;
 
-    // Follow the attacking enemy instead of locking onto the defender. Script
-    // camera mode 6 is translation-relative-to-object; BattleCamera maps that
-    // to its internal accelerated callback 22.
-    final float attackerTorsoY = -attacker.middleOffsetY_86 * 50.0f;
-    camera.cameraAccelerateRefpoint(
-      6,
-      0.0f,
-      attackerTorsoY,
-      0.0f,
+    // Retail Additions mostly establish a world-space action framing and then
+    // let the attacker move through it. Build the same kind of midpoint shot
+    // instead of parenting the camera directly to the enemy every tick.
+    final Vector3f attackerPos = new Vector3f(attacker.getPosition())
+      .add(0.0f, -attacker.middleOffsetY_86 * 50.0f, 0.0f);
+    final Vector3f defenderPos = new Vector3f(defender.getPosition())
+      .add(0.0f, -defender.middleOffsetY_86 * 50.0f, 0.0f);
+
+    final Vector3f actionFocus = new Vector3f(attackerPos)
+      .lerp(defenderPos, 0.55f);
+
+    camera.cameraMoveRefpoint(
+      0,
+      actionFocus.x,
+      actionFocus.y,
+      actionFocus.z,
+      0,
       6,
       0,
-      0.0f,
-      0,
-      attacker
+      null
     );
 
-    // Preserve the existing camera side, but ease the viewpoint inward toward
-    // the attacker. Using the accelerated relative-object path gives the zoom
-    // an interpolated ease-in rather than the previous constant linear step.
-    final Vector3f attackerTarget = new Vector3f(attacker.getPosition())
-      .add(0.0f, attackerTorsoY, 0.0f);
+    // Ease the viewpoint toward the action while preserving the original
+    // camera side. This mirrors the Addition camera's "compose then move"
+    // behavior rather than sticking to the attacker.
     final Vector3f desiredView = new Vector3f(savedCameraViewpoint)
-      .lerp(attackerTarget, 0.28f);
-    desiredView.y -= 180.0f;
+      .lerp(actionFocus, 0.22f);
+    desiredView.y -= 140.0f;
 
-    final Vector3f relativeView = desiredView.sub(attacker.getPosition());
     camera.cameraAccelerateViewpoint(
-      6,
-      relativeView.x,
-      relativeView.y,
-      relativeView.z,
-      6,
       0,
-      0.0f,
+      desiredView.x,
+      desiredView.y,
+      desiredView.z,
+      6,
+      1,
+      1.0f,
       0,
-      attacker
+      null
     );
   }
 
