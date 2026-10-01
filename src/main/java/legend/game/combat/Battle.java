@@ -524,6 +524,7 @@ public class Battle extends EngineState<Battle> {
   private int _800faa92;
   private int _800faa94;
   private final List<String> pendingAdditionRewardTexts = new ArrayList<>();
+  private int additionRewardSummaryTick = Integer.MIN_VALUE;
 
   /** Next global is related to AdditionNameTextEffect1c */
   private int _800faa9d;
@@ -5284,6 +5285,7 @@ public class Battle extends EngineState<Battle> {
     if(s2 == -1) {
       this._800faa94 = 0;
       this.pendingAdditionRewardTexts.clear();
+      this.additionRewardSummaryTick = Integer.MIN_VALUE;
     } else {
       //LAB_800d4388
       final SpTextEffect40 s1 = new SpTextEffect40();
@@ -5340,7 +5342,8 @@ public class Battle extends EngineState<Battle> {
     }
 
     final String reward = text.toUpperCase();
-    if(this._800faa94 != 0) {
+    final int summaryAge = tickCount_800bb0fc - this.additionRewardSummaryTick;
+    if(this._800faa94 != 0 && summaryAge >= 0 && summaryAge <= 8) {
       this.allocateAdditionRewardText(reward);
     } else {
       this.pendingAdditionRewardTexts.add(reward);
@@ -5390,6 +5393,7 @@ public class Battle extends EngineState<Battle> {
   public FlowControl scriptAllocateAdditionNameEffect(final RunningScript<?> script) {
     final int totalSp = script.params_20[0].get();
     if(totalSp != -1) {
+      this.additionRewardSummaryTick = tickCount_800bb0fc;
       this.flushAdditionCompletionRewards();
       final AdditionNameTextEffect1c s0 = new AdditionNameTextEffect1c();
       final ScriptState<AdditionNameTextEffect1c> state = SCRIPTS.allocateScriptState("AdditionScriptData1c", s0);
