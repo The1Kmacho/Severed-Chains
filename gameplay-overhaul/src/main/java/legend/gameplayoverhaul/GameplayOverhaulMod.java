@@ -518,6 +518,12 @@ public final class GameplayOverhaulMod {
     );
     appendMomentumStatEffect(
       event,
+      event.entity.stats.getStat(LodMod.DRAGOON_ATTACK_STAT.get()),
+      "D-ATK",
+      "perfect_d_attack"
+    );
+    appendMomentumStatEffect(
+      event,
       event.entity.stats.getStat(LodMod.SPEED_STAT.get()),
       "SPD",
       "burning_rush_speed",
@@ -1030,27 +1036,30 @@ public final class GameplayOverhaulMod {
   }
 
   private static String shortReward(final String notification) {
+    final String turns = extractTurns(notification);
+
     if(notification.startsWith("ENEMY DEF -")) {
-      return "+DEF DOWN " + notification.replaceAll("\\D+", "") + " 3T";
+      return "+DEF DOWN" + (turns.isEmpty() ? "" : " " + turns);
     }
     if(notification.startsWith("ENEMY ATK -")) {
-      return "+ATK DOWN";
+      return "+ATK DOWN" + (turns.isEmpty() ? "" : " " + turns);
     }
     if(notification.startsWith("ENEMY SPD -")) {
-      return "+SPD DOWN";
+      return "+SPD DOWN" + (turns.isEmpty() ? "" : " " + turns);
     }
     if(notification.contains("ATK")) {
-      return "+ATK " + extractTurns(notification);
+      return "+ATK" + (turns.isEmpty() ? "" : " " + turns);
     }
     if(notification.contains("DEF")) {
-      return "+DEF " + extractTurns(notification);
+      return "+DEF" + (turns.isEmpty() ? "" : " " + turns);
     }
     if(notification.contains("SPD")) {
-      return "+SPD " + extractTurns(notification);
+      return "+SPD" + (turns.isEmpty() ? "" : " " + turns);
     }
     if(notification.contains("HP")) {
       return "+HP";
     }
+
     return notification.startsWith("+") ? notification : "+" + notification;
   }
 
