@@ -217,6 +217,12 @@ public class BattleHud {
     .size(0.65f)
     .shadowColour(TextColour.BLACK);
 
+  private final FontOptions effectIconFont = new FontOptions()
+    .horizontalAlign(HorizontalAlign.CENTRE)
+    .colour(TextColour.WHITE)
+    .size(0.48f)
+    .shadowColour(TextColour.BLACK);
+
   private final FontOptions effectNotificationFont = new FontOptions()
     .horizontalAlign(HorizontalAlign.CENTRE)
     .colour(TextColour.GOLD)
@@ -591,7 +597,11 @@ public class BattleHud {
 
           // Name
           renderText(player.getName(), displayStats.x_00 + 16, displayStats.y_02 - 25, this.font);
-          this.renderBattleEffects(player, displayStats.x_00 + 16, displayStats.y_02 - 34, HorizontalAlign.LEFT);
+
+          // Persistent player effects live on the portrait instead of consuming
+          // a text row above the HUD. Three 8px badges fit across the portrait;
+          // a second row handles unusually effect-heavy turns.
+          this.renderPlayerBattleEffectIcons(player, displayStats.x_00 - 44, displayStats.y_02 + 10);
 
           // Portrait background
           this.uiTransforms.transfer.set(displayStats.x_00 - 44, displayStats.y_02 - 22, 124.0f);
@@ -892,12 +902,7 @@ public class BattleHud {
     renderText(this.effectNotification, 160, y, this.effectNotificationFont);
   }
 
-  private void renderBattleEffects(
-    final BattleEntity27c entity,
-    final int x,
-    final int y,
-    final HorizontalAlign align
-  ) {
+  private BattleEffectDisplayEvent collectBattleEffects(final BattleEntity27c entity) {
     final BattleEffectDisplayEvent event = new BattleEffectDisplayEvent(this.battle, entity);
 
     final int status = entity.status_0e & 0xff;
@@ -914,6 +919,16 @@ public class BattleHud {
     this.appendUnaryTimedEffect(event, entity, LodMod.id("speed_down"), "SPD");
 
     EVENTS.postEvent(event);
+    return event;
+  }
+
+  private void renderBattleEffects(
+    final BattleEntity27c entity,
+    final int x,
+    final int y,
+    final HorizontalAlign align
+  ) {
+    final BattleEffectDisplayEvent event = this.collectBattleEffects(entity);
 
     if(event.effects.isEmpty()) {
       return;
@@ -921,6 +936,106 @@ public class BattleHud {
 
     this.effectFont.horizontalAlign(align);
     renderText(String.join(" ", event.effects), x, y, this.effectFont);
+  }
+
+  private record BattleEffectIcon(int iconId, int turns, boolean negative) { }
+
+  private void renderPlayerBattleEffectIcons(
+    final PlayerBattleEntity player,
+    final int portraitLeft,
+    final int portraitBottom
+  ) {
+    final BattleEffectDisplayEvent event = this.collectBattleEffects(player);
+    if(event.effects.isEmpty()) {
+      return;
+    }
+
+    this.battleMenu_800c6c34.initIconObjs();
+    final BattleMenuStruct58 menu = this.battleMenu_800c6c34;
+    int iconIndex = 0;
+
+    for(final String effect : event.effects) {
+      final BattleEffectIcon icon = this.parseBattleEffectIcon(effect);
+      if(icon == null) {
+        continue;
+      }
+
+      if(iconIndex >= 6) {
+        break;
+      }
+
+      final int column = iconIndex % 3;
+      final int row = iconIndex / 3;
+      final float x = portraitLeft + column * 8.0f;
+      final float y = portraitBottom - 8.0f - row * 8.0f;
+
+      menu.transforms.identity();
+      menu.transforms.transfer.set(x, y, 123.5f);
+      menu.transforms.scaling(0.5f, 0.5f, 1.0f);
+
+      final QueuedModelStandard model = RENDERER.queueOrthoModel(menu.menuObj, menu.transforms, QueuedModelStandard.class)
+        .vertices(menu.actionIconObjOffset + icon.iconId * 12, 4)
+        .translucency(Translucency.of(BattleMenuStruct58.battleMenuIconMetrics_800fb674[icon.iconId].translucencyMode_06));
+
+      if(icon.negative) {
+        model.colour(1.0f, 0.55f, 0.55f);
+      } else {
+        model.colour(0.75f, 1.0f, 1.0f);
+      }
+
+      if(icon.turns > 0) {
+        renderText(Integer.toString(icon.turns), x + 6.5f, y + 5.5f, this.effectIconFont);
+      }
+
+      iconIndex++;
+    }
+  }
+
+  private BattleEffectIcon parseBattleEffectIcon(final String effect) {
+    final int iconId;
+
+    if(effect.startsWith("D-ATK")) {
+      iconId = 8; // Retail D-Attack icon.
+    } else if(effect.startsWith("ATK")) {
+      iconId = 3; // Retail Attack sword.
+    } else if(effect.startsWith("DEF") || effect.startsWith("GUARD")) {
+      iconId = 0; // Retail Guard shield.
+    } else if(effect.startsWith("SPD")) {
+      iconId = 5; // Retail Run boot.
+    } else if(effect.equals("PSN")
+      || effect.equals("DSP")
+      || effect.equals("WPN")
+      || effect.equals("STN")
+      || effect.equals("FEAR")
+      || effect.equals("CNF")
+      || effect.equals("BWT")
+      || effect.equals("PET")) {
+      iconId = 6; // Retail Special icon as the generic ailment badge.
+    } else {
+      return null;
+    }
+
+    final boolean negative =
+      effect.startsWith("ATK-")
+        || effect.startsWith("DEF-")
+        || effect.startsWith("SPD-")
+        || iconId == 6;
+
+    return new BattleEffectIcon(iconId, this.extractBattleEffectTurns(effect), negative);
+  }
+
+  private int extractBattleEffectTurns(final String effect) {
+    final int open = effect.lastIndexOf('(');
+    final int marker = effect.lastIndexOf('T');
+    if(open < 0 || marker <= open + 1) {
+      return 0;
+    }
+
+    try {
+      return Integer.parseInt(effect.substring(open + 1, marker));
+    } catch(final NumberFormatException ignored) {
+      return 0;
+    }
   }
 
   private void appendLegacyTimedEffect(
