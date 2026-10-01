@@ -523,6 +523,7 @@ public class Battle extends EngineState<Battle> {
   private int _800faa90;
   private int _800faa92;
   private int _800faa94;
+  private final List<String> pendingAdditionRewardTexts = new ArrayList<>();
 
   /** Next global is related to AdditionNameTextEffect1c */
   private int _800faa9d;
@@ -5282,6 +5283,7 @@ public class Battle extends EngineState<Battle> {
 
     if(s2 == -1) {
       this._800faa94 = 0;
+      this.pendingAdditionRewardTexts.clear();
     } else {
       //LAB_800d4388
       final SpTextEffect40 s1 = new SpTextEffect40();
@@ -5332,12 +5334,52 @@ public class Battle extends EngineState<Battle> {
     return FlowControl.CONTINUE;
   }
 
+  public void queueAdditionCompletionReward(final String text) {
+    if(text != null && !text.isBlank()) {
+      this.pendingAdditionRewardTexts.add(text.toUpperCase());
+    }
+  }
+
+  private void flushAdditionCompletionRewards() {
+    if(this.pendingAdditionRewardTexts.isEmpty()) {
+      return;
+    }
+
+    if(this._800faa94 == 0) {
+      this._800faa94 = 1;
+      this._800faa92 = 0;
+      this._800faa90 = -146;
+    }
+
+    for(final String text : this.pendingAdditionRewardTexts) {
+      final SpTextEffect40 reward = new SpTextEffect40();
+      final ScriptState<SpTextEffect40> state = SCRIPTS.allocateScriptState("AdditionRewardText", reward);
+      state.loadScriptFile(doNothingScript_8004f650);
+      state.setTicker((s, effect) -> reward.tickSpTextEffect(s, this._800faa94));
+
+      reward.rewardText = text;
+      reward.destX_1c = this._800faa90 << 8;
+      reward._01 = ++this._800faa92;
+      reward.stepX_2c = (reward.destX_1c - reward.x_0c) / 14;
+
+      for(int i = 0; i < reward.charArray_3c.length; i++) {
+        reward.charArray_3c[i].x_00 = reward.x_0c;
+        reward.charArray_3c[i].y_04 = reward.y_10;
+      }
+
+      this._800faa90 = (reward.destX_1c >> 8) + text.length() * 8 + 5;
+    }
+
+    this.pendingAdditionRewardTexts.clear();
+  }
+
   @ScriptDescription("Allocates an addition name effect manager")
   @ScriptParam(direction = ScriptParam.Direction.IN, type = ScriptParam.Type.INT, name = "totalSp", description = "The amount of SP gained from this addition")
   @Method(0x800d4580L)
   public FlowControl scriptAllocateAdditionNameEffect(final RunningScript<?> script) {
     final int totalSp = script.params_20[0].get();
     if(totalSp != -1) {
+      this.flushAdditionCompletionRewards();
       final AdditionNameTextEffect1c s0 = new AdditionNameTextEffect1c();
       final ScriptState<AdditionNameTextEffect1c> state = SCRIPTS.allocateScriptState("AdditionScriptData1c", s0);
       state.loadScriptFile(doNothingScript_8004f650);
