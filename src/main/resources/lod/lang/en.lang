@@ -674,6 +674,11 @@ lod.additions.perky_step.name=Perky Step
 lod.additions.pursuit.name=Pursuit
 lod.additions.inferno.name=Inferno
 lod.additions.bone_crush.name=Bone Crush
+lod.additions.quick_draw.name=Quick Draw
+lod.additions.pinpoint.name=Pinpoint
+lod.additions.piercing_arrow.name=Piercing Arrow
+lod.additions.spirit_shot.name=Spirit Shot
+lod.additions.moonshot.name=Moonshot
 
 # Battle actions
 lod.battle_actions.attack.name=Attack

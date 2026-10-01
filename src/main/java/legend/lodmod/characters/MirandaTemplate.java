@@ -50,6 +50,8 @@ public class MirandaTemplate extends ShanaTemplate {
     this.applyLevelUp(character, null, LevelUpSource.INITIALIZATION);
     this.applyDragoonLevelUp(character, null);
 
+    this.addArcherAdditions(character);
+
     final VitalsStat hp = character.stats.getStat(HP_STAT.get());
     final VitalsStat mp = character.stats.getStat(MP_STAT.get());
     hp.restore();

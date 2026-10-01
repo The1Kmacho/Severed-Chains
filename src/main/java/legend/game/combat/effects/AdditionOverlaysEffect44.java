@@ -75,6 +75,7 @@ public class AdditionOverlaysEffect44 implements Effect<EffectManagerParams.Void
 
   /** Standalone retail-style reticle used by systems such as incoming-attack parries. */
   private boolean visualOnlyCounter;
+  private boolean visualOnlyShowButton;
   private byte[] visualOnlyCompletionState;
   private int visualOnlyWindowStart;
   private int visualOnlyImpactFrame;
@@ -192,7 +193,12 @@ public class AdditionOverlaysEffect44 implements Effect<EffectManagerParams.Void
    * border renderer. targetFrame is the expected natural damage-impact frame.
    */
   public AdditionOverlaysEffect44(final int targetFrame, final int successFrames, final boolean counterStyle) {
+    this(targetFrame, successFrames, counterStyle, false);
+  }
+
+  public AdditionOverlaysEffect44(final int targetFrame, final int successFrames, final boolean counterStyle, final boolean showButton) {
     this.reticleBorderShadow = createReticleBorderShadow();
+    this.visualOnlyShowButton = showButton;
     this.visualOnlyCounter = true;
     this.count_30 = 1;
     this.currentFrame_34 = 0;
@@ -764,6 +770,9 @@ public class AdditionOverlaysEffect44 implements Effect<EffectManagerParams.Void
 
         if(CONFIG.getConfig(CoreMod.ADDITION_OVERLAY_CONFIG.get()) == AdditionOverlayMode.FULL) {
           this.renderAdditionBorders(0, this.hitOverlays_40);
+          if(this.visualOnlyShowButton && this.visualOnlyCompletionFrames == 0 && this.currentFrame_34 <= this.visualOnlyImpactFrame) {
+            this.renderAdditionButton(this.visualOnlyImpactFrame - this.currentFrame_34, hitOverlay.isCounter_1c);
+          }
         }
 
         if(CONFIG.getConfig(CoreMod.ADDITION_OVERLAY_CONFIG.get()) != AdditionOverlayMode.OFF) {
