@@ -26,10 +26,13 @@ public class AdditionListMenu extends ListMenu {
   private UiBox description;
 
   private final List<RegistryId> additionIds = new ArrayList<>();
+  private final boolean attackSelection;
+  private boolean additionChosen;
 
   public AdditionListMenu(final BattleHud hud, final PlayerBattleEntity activePlayer, final ListPosition lastPosition, final Runnable onClose) {
     super(hud, activePlayer, 186, lastPosition, onClose);
 
+    this.attackSelection = hud.isAdditionAttackSelectionActive();
     this.additionIds.addAll(activePlayer.character.getUnlockedAdditions());
 
     int index = 0;
@@ -85,17 +88,32 @@ public class AdditionListMenu extends ListMenu {
 
   @Override
   protected void onUse(final int index) {
-    this.player_08.combatant_144.mrg_04 = null;
-    this.player_08.character.selectedAddition_19 = this.additionIds.get(index);
-    this.player_08.addition = REGISTRIES.additions.getEntry(this.player_08.character.selectedAddition_19).get();
-    this.hud.battle.loadAttackAnimations(this.player_08.combatant_144);
+    final RegistryId selectedAddition = this.additionIds.get(index);
+    final boolean additionChanged = !selectedAddition.equals(this.player_08.character.selectedAddition_19);
+
+    this.player_08.character.selectedAddition_19 = selectedAddition;
+    this.player_08.addition = REGISTRIES.additions.getEntry(selectedAddition).get();
+
+    if(additionChanged) {
+      this.player_08.combatant_144.mrg_04 = null;
+      this.hud.battle.loadAttackAnimations(this.player_08.combatant_144);
+    }
+
+    this.additionChosen = true;
+
+    if(this.attackSelection) {
+      this.hud.completeAdditionAttackSelection();
+    }
+
     this.flags_02 &= ~0x8;
     this.menuState_00 = 8;
   }
 
   @Override
   protected void onClose() {
-
+    if(this.attackSelection && !this.additionChosen) {
+      this.hud.cancelAdditionAttackSelection();
+    }
   }
 
   @Override
