@@ -554,7 +554,8 @@ public final class GameplayOverhaulMod {
     final UnaryStat defense = event.entity.stats.getStat(LodMod.DEFENSE_STAT.get());
     final RegistryId guardId = new RegistryId(MOD_ID, "guard_defense");
     if(defense != null && defense.hasMod(guardId)) {
-      event.effects.add("GUARD(" + defense.getMod(guardId).getTurns() + "T)");
+      final UnaryStatMod guardMod = defense.getMod(guardId);
+      event.effects.add("GUARD(" + guardMod.getTurns() + "T)");
     }
 
     if(event.entity instanceof final MonsterBattleEntity monster) {
