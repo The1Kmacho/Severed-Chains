@@ -67,6 +67,10 @@ public final class GameplayOverhaulMod {
   private static final Vector3f savedCameraRefpoint = new Vector3f();
   private static boolean parryCameraActive;
 
+  private static int lastMomentumTick = Integer.MIN_VALUE;
+  private static PlayerBattleEntity lastMomentumPlayer;
+  private static RegistryId lastMomentumAddition;
+
   private static final Set<RegistryId> FINAL_ADDITIONS = Set.of(
     LodAdditions.BLAZING_DYNAMO.getId(),
     LodAdditions.FLOWER_STORM.getId(),
@@ -203,51 +207,95 @@ public final class GameplayOverhaulMod {
     }
 
     if(player.addition == null
-      || !isFinal(player.addition)
       || (battleState_8006e398.additionState_324 & 0x20) == 0) {
       return;
     }
 
     final RegistryId id = player.addition.getRegistryId();
-
-    if(id.equals(LodAdditions.BLAZING_DYNAMO.getId())) {
-      forceStatusIfAllowed(event, 0x10); // Stun
-    } else if(id.equals(LodAdditions.FLOWER_STORM.getId()) || id.equals(LodAdditions.ALBERT_FLOWER_STORM.getId())) {
-      player.powerDefence_b8 = 50;
-      player.powerDefenceTurns_b9 = 3;
-    } else if(id.equals(LodAdditions.DEMONS_DANCE.getId())) {
-      forceStatusIfAllowed(event, 0x08); // Fear
-    } else if(id.equals(LodAdditions.OMNI_SWEEP.getId())) {
-      player.stats.getStat(LodMod.SPEED_STAT.get()).addMod(
-        new RegistryId(MOD_ID, "omni_sweep_speed"),
-        LodMod.UNARY_STAT_MOD_TYPE.get().make(new UnaryStatModConfig().percent(50).turns(3))
-      );
-    } else if(id.equals(LodAdditions.PERKY_STEP.getId())) {
-      forceStatusIfAllowed(event, 0x10); // Stun/freeze analogue in the retail status set
-    } else if(id.equals(LodAdditions.BONE_CRUSH.getId())) {
-      player.powerAttack_b4 = 50;
-      player.powerAttackTurns_b5 = 3;
+    if(lastMomentumTick == tickCount_800bb0fc
+      && lastMomentumPlayer == player
+      && id.equals(lastMomentumAddition)) {
+      return;
     }
+
+    lastMomentumTick = tickCount_800bb0fc;
+    lastMomentumPlayer = player;
+    lastMomentumAddition = id;
+    applyAdditionMomentum(player, event.defender, id, event);
   }
 
   @EventListener
   public static void describeAddition(final AdditionDescriptionEvent event) {
     final RegistryId id = event.addition.getRegistryId();
+    final String elementBonus = isFinal(event.addition) ? "Element +25%" : "Element +10%";
 
-    if(id.equals(LodAdditions.BLAZING_DYNAMO.getId())) {
-      event.description = "Complete: Fire +25%, Stun";
-    } else if(id.equals(LodAdditions.FLOWER_STORM.getId()) || id.equals(LodAdditions.ALBERT_FLOWER_STORM.getId())) {
-      event.description = "Complete: Wind +25%, Defense Up";
-    } else if(id.equals(LodAdditions.DEMONS_DANCE.getId())) {
-      event.description = "Complete: Dark +25%, Fear";
-    } else if(id.equals(LodAdditions.OMNI_SWEEP.getId())) {
-      event.description = "Complete: Thunder +25%, Speed Up";
-    } else if(id.equals(LodAdditions.PERKY_STEP.getId())) {
-      event.description = "Complete: Water +25%, Stun";
-    } else if(id.equals(LodAdditions.BONE_CRUSH.getId())) {
-      event.description = "Complete: Earth +25%, Power Up";
+    if(isAddition(id, LodAdditions.DOUBLE_SLASH.getId())) {
+      event.description = "Complete: " + elementBonus + ", Power +10% (2T)";
+    } else if(isAddition(id, LodAdditions.VOLCANO.getId())) {
+      event.description = "Complete: " + elementBonus + ", Enemy DEF -15% (3T)";
+    } else if(isAddition(id, LodAdditions.BURNING_RUSH.getId())) {
+      event.description = "Complete: " + elementBonus + ", Speed +20% (2T)";
+    } else if(isAddition(id, LodAdditions.CRUSH_DANCE.getId())) {
+      event.description = "Complete: " + elementBonus + ", Enemy ATK -15% (3T)";
+    } else if(isAddition(id, LodAdditions.MADNESS_HERO.getId())) {
+      event.description = "Complete: " + elementBonus + ", Speed +30% (3T)";
+    } else if(isAddition(id, LodAdditions.MOON_STRIKE.getId())) {
+      event.description = "Complete: " + elementBonus + ", Enemy DEF -25% (2T)";
+    } else if(isAddition(id, LodAdditions.BLAZING_DYNAMO.getId())) {
+      event.description = "Complete: " + elementBonus + ", Stun";
+
+    } else if(isAddition(id, LodAdditions.HARPOON.getId(), LodAdditions.ALBERT_HARPOON.getId())) {
+      event.description = "Complete: " + elementBonus + ", Defense +15% (2T)";
+    } else if(isAddition(id, LodAdditions.SPINNING_CANE.getId(), LodAdditions.ALBERT_SPINNING_CANE.getId())) {
+      event.description = "Complete: " + elementBonus + ", Enemy ATK -15% (3T)";
+    } else if(isAddition(id, LodAdditions.ROD_TYPHOON.getId(), LodAdditions.ALBERT_ROD_TYPHOON.getId())) {
+      event.description = "Complete: " + elementBonus + ", Power +15% (2T)";
+    } else if(isAddition(id, LodAdditions.GUST_OF_WIND_DANCE.getId(), LodAdditions.ALBERT_GUST_OF_WIND_DANCE.getId())) {
+      event.description = "Complete: " + elementBonus + ", Speed +25% (3T)";
+    } else if(isAddition(id, LodAdditions.FLOWER_STORM.getId(), LodAdditions.ALBERT_FLOWER_STORM.getId())) {
+      event.description = "Complete: " + elementBonus + ", Defense +50% (3T)";
+
+    } else if(isAddition(id, LodAdditions.WHIP_SMACK.getId())) {
+      event.description = "Complete: " + elementBonus + ", Heal 8% HP";
+    } else if(isAddition(id, LodAdditions.MORE_MORE.getId())) {
+      event.description = "Complete: " + elementBonus + ", Speed +20% (3T)";
+    } else if(isAddition(id, LodAdditions.HARD_BLADE.getId())) {
+      event.description = "Complete: " + elementBonus + ", Enemy DEF -25% (3T)";
+    } else if(isAddition(id, LodAdditions.DEMONS_DANCE.getId())) {
+      event.description = "Complete: " + elementBonus + ", Fear";
+
+    } else if(isAddition(id, LodAdditions.DOUBLE_PUNCH.getId())) {
+      event.description = "Complete: " + elementBonus + ", Speed +15% (2T)";
+    } else if(isAddition(id, LodAdditions.FERRY_OF_STYX.getId())) {
+      event.description = "Complete: " + elementBonus + ", Heal 10% HP";
+    } else if(isAddition(id, LodAdditions.SUMMON_4_GODS.getId())) {
+      event.description = "Complete: " + elementBonus + ", Power +15% (3T)";
+    } else if(isAddition(id, LodAdditions.FIVE_RING_SHATTERING.getId())) {
+      event.description = "Complete: " + elementBonus + ", Enemy DEF -20% (3T)";
+    } else if(isAddition(id, LodAdditions.HEX_HAMMER.getId())) {
+      event.description = "Complete: " + elementBonus + ", Stun";
+    } else if(isAddition(id, LodAdditions.OMNI_SWEEP.getId())) {
+      event.description = "Complete: " + elementBonus + ", Speed +50% (3T)";
+
+    } else if(isAddition(id, LodAdditions.DOUBLE_SMACK.getId())) {
+      event.description = "Complete: " + elementBonus + ", Heal 8% HP";
+    } else if(isAddition(id, LodAdditions.HAMMER_SPIN.getId())) {
+      event.description = "Complete: " + elementBonus + ", Speed +20% (3T)";
+    } else if(isAddition(id, LodAdditions.COOL_BOOGIE.getId())) {
+      event.description = "Complete: " + elementBonus + ", +25 SP";
+    } else if(isAddition(id, LodAdditions.CATS_CRADLE.getId())) {
+      event.description = "Complete: " + elementBonus + ", Enemy Speed -25% (3T)";
+    } else if(isAddition(id, LodAdditions.PERKY_STEP.getId())) {
+      event.description = "Complete: " + elementBonus + ", Stun";
+
+    } else if(isAddition(id, LodAdditions.PURSUIT.getId())) {
+      event.description = "Complete: " + elementBonus + ", Enemy DEF -15% (3T)";
+    } else if(isAddition(id, LodAdditions.INFERNO.getId())) {
+      event.description = "Complete: " + elementBonus + ", Power +25% (3T)";
+    } else if(isAddition(id, LodAdditions.BONE_CRUSH.getId())) {
+      event.description = "Complete: " + elementBonus + ", Power +50% (3T)";
     } else {
-      event.description = "Complete: innate element +10%";
+      event.description = "Complete: " + elementBonus;
     }
   }
 
@@ -417,6 +465,116 @@ public final class GameplayOverhaulMod {
       null
     );
     parryCameraActive = false;
+  }
+
+  private static void applyAdditionMomentum(
+    final PlayerBattleEntity player,
+    final BattleEntity27c defender,
+    final RegistryId id,
+    final AttackSpecialEffectEvent event
+  ) {
+    if(isAddition(id, LodAdditions.DOUBLE_SLASH.getId())) {
+      setPowerAttack(player, 10, 2);
+    } else if(isAddition(id, LodAdditions.VOLCANO.getId())) {
+      setPowerDefence(defender, -15, 3);
+    } else if(isAddition(id, LodAdditions.BURNING_RUSH.getId())) {
+      setSpeed(player, "burning_rush_speed", 20, 2);
+    } else if(isAddition(id, LodAdditions.CRUSH_DANCE.getId())) {
+      setPowerAttack(defender, -15, 3);
+    } else if(isAddition(id, LodAdditions.MADNESS_HERO.getId())) {
+      setSpeed(player, "madness_hero_speed", 30, 3);
+    } else if(isAddition(id, LodAdditions.MOON_STRIKE.getId())) {
+      setPowerDefence(defender, -25, 2);
+    } else if(isAddition(id, LodAdditions.BLAZING_DYNAMO.getId())) {
+      forceStatusIfAllowed(event, 0x10);
+
+    } else if(isAddition(id, LodAdditions.HARPOON.getId(), LodAdditions.ALBERT_HARPOON.getId())) {
+      setPowerDefence(player, 15, 2);
+    } else if(isAddition(id, LodAdditions.SPINNING_CANE.getId(), LodAdditions.ALBERT_SPINNING_CANE.getId())) {
+      setPowerAttack(defender, -15, 3);
+    } else if(isAddition(id, LodAdditions.ROD_TYPHOON.getId(), LodAdditions.ALBERT_ROD_TYPHOON.getId())) {
+      setPowerAttack(player, 15, 2);
+    } else if(isAddition(id, LodAdditions.GUST_OF_WIND_DANCE.getId(), LodAdditions.ALBERT_GUST_OF_WIND_DANCE.getId())) {
+      setSpeed(player, "gust_speed", 25, 3);
+    } else if(isAddition(id, LodAdditions.FLOWER_STORM.getId(), LodAdditions.ALBERT_FLOWER_STORM.getId())) {
+      setPowerDefence(player, 50, 3);
+
+    } else if(isAddition(id, LodAdditions.WHIP_SMACK.getId())) {
+      healPercent(player, 8);
+    } else if(isAddition(id, LodAdditions.MORE_MORE.getId())) {
+      setSpeed(player, "more_more_speed", 20, 3);
+    } else if(isAddition(id, LodAdditions.HARD_BLADE.getId())) {
+      setPowerDefence(defender, -25, 3);
+    } else if(isAddition(id, LodAdditions.DEMONS_DANCE.getId())) {
+      forceStatusIfAllowed(event, 0x08);
+
+    } else if(isAddition(id, LodAdditions.DOUBLE_PUNCH.getId())) {
+      setSpeed(player, "double_punch_speed", 15, 2);
+    } else if(isAddition(id, LodAdditions.FERRY_OF_STYX.getId())) {
+      healPercent(player, 10);
+    } else if(isAddition(id, LodAdditions.SUMMON_4_GODS.getId())) {
+      setPowerAttack(player, 15, 3);
+    } else if(isAddition(id, LodAdditions.FIVE_RING_SHATTERING.getId())) {
+      setPowerDefence(defender, -20, 3);
+    } else if(isAddition(id, LodAdditions.HEX_HAMMER.getId())) {
+      forceStatusIfAllowed(event, 0x10);
+    } else if(isAddition(id, LodAdditions.OMNI_SWEEP.getId())) {
+      setSpeed(player, "omni_sweep_speed", 50, 3);
+
+    } else if(isAddition(id, LodAdditions.DOUBLE_SMACK.getId())) {
+      healPercent(player, 8);
+    } else if(isAddition(id, LodAdditions.HAMMER_SPIN.getId())) {
+      setSpeed(player, "hammer_spin_speed", 20, 3);
+    } else if(isAddition(id, LodAdditions.COOL_BOOGIE.getId())) {
+      grantSp(player, 25);
+    } else if(isAddition(id, LodAdditions.CATS_CRADLE.getId())) {
+      setSpeed(defender, "cats_cradle_slow", -25, 3);
+    } else if(isAddition(id, LodAdditions.PERKY_STEP.getId())) {
+      forceStatusIfAllowed(event, 0x10);
+
+    } else if(isAddition(id, LodAdditions.PURSUIT.getId())) {
+      setPowerDefence(defender, -15, 3);
+    } else if(isAddition(id, LodAdditions.INFERNO.getId())) {
+      setPowerAttack(player, 25, 3);
+    } else if(isAddition(id, LodAdditions.BONE_CRUSH.getId())) {
+      setPowerAttack(player, 50, 3);
+    }
+  }
+
+  private static boolean isAddition(final RegistryId id, final RegistryId... candidates) {
+    for(final RegistryId candidate : candidates) {
+      if(id.equals(candidate)) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  private static void setPowerAttack(final BattleEntity27c entity, final int percent, final int turns) {
+    entity.powerAttack_b4 = percent;
+    entity.powerAttackTurns_b5 = turns;
+  }
+
+  private static void setPowerDefence(final BattleEntity27c entity, final int percent, final int turns) {
+    entity.powerDefence_b8 = percent;
+    entity.powerDefenceTurns_b9 = turns;
+  }
+
+  private static void setSpeed(
+    final BattleEntity27c entity,
+    final String key,
+    final int percent,
+    final int turns
+  ) {
+    entity.stats.getStat(LodMod.SPEED_STAT.get()).addMod(
+      new RegistryId(MOD_ID, key),
+      LodMod.UNARY_STAT_MOD_TYPE.get().make(new UnaryStatModConfig().percent(percent).turns(turns))
+    );
+  }
+
+  private static void grantSp(final PlayerBattleEntity player, final int amount) {
+    final VitalsStat sp = player.stats.getStat(LodMod.SP_STAT.get());
+    sp.setCurrent(sp.getCurrent() + amount);
   }
 
   private static boolean isFinal(final Addition addition) {
