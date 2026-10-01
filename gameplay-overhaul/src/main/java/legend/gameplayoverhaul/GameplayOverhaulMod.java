@@ -342,12 +342,12 @@ public final class GameplayOverhaulMod {
     savedCameraRefpoint.set(camera.rview2_00.refpoint_0c);
     parryCameraActive = true;
 
-    // Follow the attacking enemy instead of locking onto the defender. Callback
-    // 22 is the camera's accelerated translation-relative-to-object path, so
-    // the target continues moving with the enemy throughout its approach.
+    // Follow the attacking enemy instead of locking onto the defender. Script
+    // camera mode 6 is translation-relative-to-object; BattleCamera maps that
+    // to its internal accelerated callback 22.
     final float attackerTorsoY = -attacker.middleOffsetY_86 * 50.0f;
     camera.cameraAccelerateRefpoint(
-      22,
+      6,
       0.0f,
       attackerTorsoY,
       0.0f,
@@ -369,7 +369,7 @@ public final class GameplayOverhaulMod {
 
     final Vector3f relativeView = desiredView.sub(attacker.getPosition());
     camera.cameraAccelerateViewpoint(
-      22,
+      6,
       relativeView.x,
       relativeView.y,
       relativeView.z,
@@ -391,7 +391,7 @@ public final class GameplayOverhaulMod {
 
     // Ease back to the pre-attack framing as well, avoiding a linear snap-out.
     camera.cameraAccelerateViewpoint(
-      16,
+      0,
       savedCameraViewpoint.x,
       savedCameraViewpoint.y,
       savedCameraViewpoint.z,
@@ -402,7 +402,7 @@ public final class GameplayOverhaulMod {
       null
     );
     camera.cameraAccelerateRefpoint(
-      16,
+      0,
       savedCameraRefpoint.x,
       savedCameraRefpoint.y,
       savedCameraRefpoint.z,
