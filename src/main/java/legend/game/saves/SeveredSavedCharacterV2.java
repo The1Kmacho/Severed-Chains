@@ -86,6 +86,11 @@ public class SeveredSavedCharacterV2 implements SavedCharacter {
       }
     }
 
+    // A newer character template may introduce level-gated Additions that did
+    // not exist when this save was written. Re-evaluate unlockable entries now
+    // that the saved character level and Addition state have been restored.
+    character.template.checkUnlocks(character, null);
+
     if(this.selectedAddition != null) {
       if(REGISTRIES.additions.hasEntry(this.selectedAddition)) {
         character.selectedAddition_19 = this.selectedAddition;

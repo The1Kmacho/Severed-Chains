@@ -549,12 +549,9 @@ public final class GameplayOverhaulMod {
     }
 
     activeArcherXpAwarded = true;
+    // Match melee Additions: combat only grants XP. The normal post-battle
+    // screen owns Addition level-ups and mastery/level unlock processing.
     info.xp++;
-    while(info.level < addition.getMaxLevel(player.character, info)
-      && info.xp >= addition.getXpToNextLevel(player.character, info)) {
-      info.level++;
-    }
-    player.character.template.checkUnlocks(player.character, null);
   }
 
   private static String attackCueKey(final BattleEntity27c attacker, final AttackType attackType) {
