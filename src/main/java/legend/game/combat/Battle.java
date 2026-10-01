@@ -9073,6 +9073,13 @@ public class Battle extends EngineState<Battle> {
       return;
     }
 
+    // This movement helper is shared by normal melee and some scripted
+    // actions. If an item is already active, this is not a counterable melee
+    // approach and must not create a provisional physical parry cue.
+    if(attacker.item_d4 != null) {
+      return;
+    }
+
     this.earlyPhysicalCueTurn = attackerState;
 
     // The movement duration is the earliest reliable piece of attack-specific

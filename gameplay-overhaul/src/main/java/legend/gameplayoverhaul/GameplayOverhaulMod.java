@@ -21,6 +21,7 @@ import legend.game.combat.types.AttackType;
 import legend.game.modding.events.battle.BattleEffectDisplayEvent;
 import legend.game.modding.events.battle.ArcherSpEvent;
 import legend.game.modding.events.battle.BattleEntityTurnEvent;
+import legend.game.modding.events.battle.BattleEndedEvent;
 import legend.game.modding.events.battle.BattleIntroCameraEvent;
 import legend.game.modding.events.battle.PlayerAttackPreparedEvent;
 import legend.game.modding.events.battle.IncomingAttackCueEvent;
@@ -166,6 +167,17 @@ public final class GameplayOverhaulMod {
       return;
     }
 
+    // Player parries are intentionally limited to normal physical attacks.
+    // Item/spell/status hit checks are also useful as a cancellation signal:
+    // a generic movement helper may have provisionally looked like a melee
+    // approach before the enemy script revealed its real non-physical action.
+    if(event.attackType != AttackType.PHYSICAL) {
+      if(activeCueAttacker == event.attacker && activeCueDefender == event.defender) {
+        cancelParryCue();
+      }
+      return;
+    }
+
     // Enemy melee scripts often hit the normal hit-check only a few ticks
     // before damage. If an earlier movement cue already started this exact
     // attack, the hit-check is only confirmation and must not restart the
@@ -176,7 +188,7 @@ public final class GameplayOverhaulMod {
       return;
     }
 
-    finishActiveParryOverlay();
+    cancelParryCue();
 
     activeCueAttacker = event.attacker;
     activeCueDefender = event.defender;
@@ -205,11 +217,21 @@ public final class GameplayOverhaulMod {
 
   @EventListener
   public static void battleEntityTurn(final BattleEntityTurnEvent<?> event) {
-    if(parryCameraActive && activeCueAttacker == null) {
+    if(activeCueAttacker != null) {
+      cancelParryCue();
+    } else if(parryCameraActive) {
       restoreParryCamera();
     }
 
     if(activeArcherPlayer != null && activeArcherAttackResolved) {
+      clearArcherAdditionState();
+    }
+  }
+
+  @EventListener
+  public static void battleEnded(final BattleEndedEvent event) {
+    cancelParryCue();
+    if(activeArcherPlayer != null) {
       clearArcherAdditionState();
     }
   }
@@ -228,20 +250,27 @@ public final class GameplayOverhaulMod {
   @EventListener
   public static void attack(final AttackEvent event) {
     if(event.attacker instanceof MonsterBattleEntity && event.defender instanceof PlayerBattleEntity) {
-      final int now = tickCount_800bb0fc;
-      final boolean cueMatches = finishParryCue(event.attacker, event.defender, event.attackType, now);
-      final int parryAge = now - lastParryTick;
-
-      if(cueMatches && parryAge >= 0 && parryAge <= PARRY_WINDOW_TICKS) {
-        event.damage = 0;
+      if(event.attackType != AttackType.PHYSICAL) {
+        if(activeCueAttacker == event.attacker && activeCueDefender == event.defender) {
+          cancelParryCue();
+        }
         lastParryTick = Integer.MIN_VALUE;
-        markNegatedAttack(event.defender);
-        playParryReaction((PlayerBattleEntity)event.defender);
-        LOGGER.info("[Gameplay Overhaul] PARRY");
-        return;
-      }
+      } else {
+        final int now = tickCount_800bb0fc;
+        final boolean cueMatches = finishParryCue(event.attacker, event.defender, event.attackType, now);
+        final int parryAge = now - lastParryTick;
 
-      lastParryTick = Integer.MIN_VALUE;
+        if(cueMatches && parryAge >= 0 && parryAge <= PARRY_WINDOW_TICKS) {
+          event.damage = 0;
+          lastParryTick = Integer.MIN_VALUE;
+          markNegatedAttack(event.defender);
+          playParryReaction((PlayerBattleEntity)event.defender);
+          LOGGER.info("[Gameplay Overhaul] PARRY");
+          return;
+        }
+
+        lastParryTick = Integer.MIN_VALUE;
+      }
     }
 
     if(!(event.attacker instanceof final PlayerBattleEntity player)
@@ -603,12 +632,19 @@ public final class GameplayOverhaulMod {
     return true;
   }
 
-  private static void finishActiveParryOverlay() {
+  private static void cancelParryCue() {
     if(activeParryOverlay != null) {
       activeParryOverlay.deallocateWithChildren();
-      activeParryOverlay = null;
     }
+
+    activeParryOverlay = null;
     activeParryReticle = null;
+    activeCueAttacker = null;
+    activeCueDefender = null;
+    activeCueAttackType = null;
+    activeCueStartTick = Integer.MIN_VALUE;
+    activeCueKey = null;
+    lastParryTick = Integer.MIN_VALUE;
     restoreParryCamera();
   }
 
