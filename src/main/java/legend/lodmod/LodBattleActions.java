@@ -2,6 +2,7 @@ package legend.lodmod;
 
 import legend.game.combat.ui.BattleAction;
 import legend.game.combat.ui.RegisterBattleActionsEvent;
+import legend.lodmod.battleactions.AdditionAttackBattleAction;
 import legend.lodmod.battleactions.ChangeAdditionBattleAction;
 import legend.lodmod.battleactions.ItemBattleAction;
 import legend.lodmod.battleactions.RetailBattleAction;
@@ -18,7 +19,7 @@ public final class LodBattleActions {
 
   private static final Registrar<BattleAction, RegisterBattleActionsEvent> REGISTRAR = new Registrar<>(REGISTRIES.battleActions, LodMod.MOD_ID);
 
-  public static final RegistryDelegate<BattleAction> ATTACK = REGISTRAR.register("attack", () -> new RetailBattleAction(4));
+  public static final RegistryDelegate<BattleAction> ATTACK = REGISTRAR.register("attack", AdditionAttackBattleAction::new);
   public static final RegistryDelegate<BattleAction> GUARD = REGISTRAR.register("guard", () -> new RetailBattleAction(1));
   public static final RegistryDelegate<BattleAction> ITEMS = REGISTRAR.register("items", ItemBattleAction::new);
   public static final RegistryDelegate<BattleAction> SPELLS = REGISTRAR.register("spells", SpellBattleAction::new);
