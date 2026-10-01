@@ -9391,8 +9391,9 @@ public class Battle extends EngineState<Battle> {
     this.currentCameraIndex_800c6780 = encounter.cameraPosIndices[this.hud.currentCameraPositionIndicesIndex_800c66b0];
 
     if(introCameraEvent.skipStandardIntro) {
-      // Skip the enemy/player showcase. The retail camera-32 settle is deferred
-      // until battleStart(), after player and monster battle entities exist.
+      // Skip the enemy/player showcase. The retail camera-32 settle starts from
+      // loadHudAndAttackAnimations(), after player and monster battle entities exist,
+      // while the encounter transition can still cover its initial movement.
       this.cameraScriptMainTableJumpIndex_800c6748 = 0;
       this.battleInitialCameraMovementFinished_800c66a8 = true;
       this.fastStandardBattleIntro = true;

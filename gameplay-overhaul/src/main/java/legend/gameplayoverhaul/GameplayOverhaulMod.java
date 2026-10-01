@@ -37,6 +37,7 @@ import java.util.Set;
 import static legend.game.EngineStates.currentEngineState_8004dd04;
 import static legend.game.Scus94491BpeSegment_8006.battleState_8006e398;
 import static legend.game.Scus94491BpeSegment_800b.gameState_800babc8;
+import static legend.game.Scus94491BpeSegment_800b.spGained_800bc950;
 import static legend.game.Scus94491BpeSegment_800b.tickCount_800bb0fc;
 
 @Mod(id = GameplayOverhaulMod.MOD_ID, version = "^3.0.0")
@@ -474,57 +475,57 @@ public final class GameplayOverhaulMod {
     final AttackSpecialEffectEvent event
   ) {
     if(isAddition(id, LodAdditions.DOUBLE_SLASH.getId())) {
-      setPowerAttack(player, 10, 2);
+      setAttack(player, "double_slash_attack", 10, selfEffectTurns(2));
     } else if(isAddition(id, LodAdditions.VOLCANO.getId())) {
-      setPowerDefence(defender, -15, 3);
+      setDefense(defender, "volcano_defense_down", -15, 3);
     } else if(isAddition(id, LodAdditions.BURNING_RUSH.getId())) {
-      setSpeed(player, "burning_rush_speed", 20, 2);
+      setSpeed(player, "burning_rush_speed", 20, selfEffectTurns(2));
     } else if(isAddition(id, LodAdditions.CRUSH_DANCE.getId())) {
-      setPowerAttack(defender, -15, 3);
+      setAttack(defender, "crush_dance_attack_down", -15, 3);
     } else if(isAddition(id, LodAdditions.MADNESS_HERO.getId())) {
-      setSpeed(player, "madness_hero_speed", 30, 3);
+      setSpeed(player, "madness_hero_speed", 30, selfEffectTurns(3));
     } else if(isAddition(id, LodAdditions.MOON_STRIKE.getId())) {
-      setPowerDefence(defender, -25, 2);
+      setDefense(defender, "moon_strike_defense_down", -25, 2);
     } else if(isAddition(id, LodAdditions.BLAZING_DYNAMO.getId())) {
       forceStatusIfAllowed(event, 0x10);
 
     } else if(isAddition(id, LodAdditions.HARPOON.getId(), LodAdditions.ALBERT_HARPOON.getId())) {
-      setPowerDefence(player, 15, 2);
+      setDefense(player, "harpoon_defense", 15, selfEffectTurns(2));
     } else if(isAddition(id, LodAdditions.SPINNING_CANE.getId(), LodAdditions.ALBERT_SPINNING_CANE.getId())) {
-      setPowerAttack(defender, -15, 3);
+      setAttack(defender, "spinning_cane_attack_down", -15, 3);
     } else if(isAddition(id, LodAdditions.ROD_TYPHOON.getId(), LodAdditions.ALBERT_ROD_TYPHOON.getId())) {
-      setPowerAttack(player, 15, 2);
+      setAttack(player, "rod_typhoon_attack", 15, selfEffectTurns(2));
     } else if(isAddition(id, LodAdditions.GUST_OF_WIND_DANCE.getId(), LodAdditions.ALBERT_GUST_OF_WIND_DANCE.getId())) {
-      setSpeed(player, "gust_speed", 25, 3);
+      setSpeed(player, "gust_speed", 25, selfEffectTurns(3));
     } else if(isAddition(id, LodAdditions.FLOWER_STORM.getId(), LodAdditions.ALBERT_FLOWER_STORM.getId())) {
-      setPowerDefence(player, 50, 3);
+      setDefense(player, "flower_storm_defense", 50, selfEffectTurns(3));
 
     } else if(isAddition(id, LodAdditions.WHIP_SMACK.getId())) {
       healPercent(player, 8);
     } else if(isAddition(id, LodAdditions.MORE_MORE.getId())) {
-      setSpeed(player, "more_more_speed", 20, 3);
+      setSpeed(player, "more_more_speed", 20, selfEffectTurns(3));
     } else if(isAddition(id, LodAdditions.HARD_BLADE.getId())) {
-      setPowerDefence(defender, -25, 3);
+      setDefense(defender, "hard_blade_defense_down", -25, 3);
     } else if(isAddition(id, LodAdditions.DEMONS_DANCE.getId())) {
       forceStatusIfAllowed(event, 0x08);
 
     } else if(isAddition(id, LodAdditions.DOUBLE_PUNCH.getId())) {
-      setSpeed(player, "double_punch_speed", 15, 2);
+      setSpeed(player, "double_punch_speed", 15, selfEffectTurns(2));
     } else if(isAddition(id, LodAdditions.FERRY_OF_STYX.getId())) {
       healPercent(player, 10);
     } else if(isAddition(id, LodAdditions.SUMMON_4_GODS.getId())) {
-      setPowerAttack(player, 15, 3);
+      setAttack(player, "summon_4_gods_attack", 15, selfEffectTurns(3));
     } else if(isAddition(id, LodAdditions.FIVE_RING_SHATTERING.getId())) {
-      setPowerDefence(defender, -20, 3);
+      setDefense(defender, "five_ring_defense_down", -20, 3);
     } else if(isAddition(id, LodAdditions.HEX_HAMMER.getId())) {
       forceStatusIfAllowed(event, 0x10);
     } else if(isAddition(id, LodAdditions.OMNI_SWEEP.getId())) {
-      setSpeed(player, "omni_sweep_speed", 50, 3);
+      setSpeed(player, "omni_sweep_speed", 50, selfEffectTurns(3));
 
     } else if(isAddition(id, LodAdditions.DOUBLE_SMACK.getId())) {
       healPercent(player, 8);
     } else if(isAddition(id, LodAdditions.HAMMER_SPIN.getId())) {
-      setSpeed(player, "hammer_spin_speed", 20, 3);
+      setSpeed(player, "hammer_spin_speed", 20, selfEffectTurns(3));
     } else if(isAddition(id, LodAdditions.COOL_BOOGIE.getId())) {
       grantSp(player, 25);
     } else if(isAddition(id, LodAdditions.CATS_CRADLE.getId())) {
@@ -533,11 +534,11 @@ public final class GameplayOverhaulMod {
       forceStatusIfAllowed(event, 0x10);
 
     } else if(isAddition(id, LodAdditions.PURSUIT.getId())) {
-      setPowerDefence(defender, -15, 3);
+      setDefense(defender, "pursuit_defense_down", -15, 3);
     } else if(isAddition(id, LodAdditions.INFERNO.getId())) {
-      setPowerAttack(player, 25, 3);
+      setAttack(player, "inferno_attack", 25, selfEffectTurns(3));
     } else if(isAddition(id, LodAdditions.BONE_CRUSH.getId())) {
-      setPowerAttack(player, 50, 3);
+      setAttack(player, "bone_crush_attack", 50, selfEffectTurns(3));
     }
   }
 
@@ -550,14 +551,35 @@ public final class GameplayOverhaulMod {
     return false;
   }
 
-  private static void setPowerAttack(final BattleEntity27c entity, final int percent, final int turns) {
-    entity.powerAttack_b4 = percent;
-    entity.powerAttackTurns_b5 = turns;
+  private static int selfEffectTurns(final int displayedTurns) {
+    // Addition Momentum is granted late in the attacker's current turn. Stat
+    // mods tick when that turn finishes, so keep one extra internal tick to
+    // deliver the displayed number of future turns.
+    return displayedTurns + 1;
   }
 
-  private static void setPowerDefence(final BattleEntity27c entity, final int percent, final int turns) {
-    entity.powerDefence_b8 = percent;
-    entity.powerDefenceTurns_b9 = turns;
+  private static void setAttack(
+    final BattleEntity27c entity,
+    final String key,
+    final int percent,
+    final int turns
+  ) {
+    entity.stats.getStat(LodMod.ATTACK_STAT.get()).addMod(
+      new RegistryId(MOD_ID, key),
+      LodMod.UNARY_STAT_MOD_TYPE.get().make(new UnaryStatModConfig().percent(percent).turns(turns))
+    );
+  }
+
+  private static void setDefense(
+    final BattleEntity27c entity,
+    final String key,
+    final int percent,
+    final int turns
+  ) {
+    entity.stats.getStat(LodMod.DEFENSE_STAT.get()).addMod(
+      new RegistryId(MOD_ID, key),
+      LodMod.UNARY_STAT_MOD_TYPE.get().make(new UnaryStatModConfig().percent(percent).turns(turns))
+    );
   }
 
   private static void setSpeed(
@@ -575,6 +597,7 @@ public final class GameplayOverhaulMod {
   private static void grantSp(final PlayerBattleEntity player, final int amount) {
     final VitalsStat sp = player.stats.getStat(LodMod.SP_STAT.get());
     sp.setCurrent(sp.getCurrent() + amount);
+    spGained_800bc950.mergeInt(player.character, amount, Integer::sum);
   }
 
   private static boolean isFinal(final Addition addition) {

@@ -88,10 +88,17 @@ public class AdditionListMenu extends ListMenu {
 
   @Override
   protected void onUse(final int index) {
-    this.player_08.combatant_144.mrg_04 = null;
-    this.player_08.character.selectedAddition_19 = this.additionIds.get(index);
-    this.player_08.addition = REGISTRIES.additions.getEntry(this.player_08.character.selectedAddition_19).get();
-    this.hud.battle.loadAttackAnimations(this.player_08.combatant_144);
+    final RegistryId selectedAddition = this.additionIds.get(index);
+    final boolean additionChanged = !selectedAddition.equals(this.player_08.character.selectedAddition_19);
+
+    this.player_08.character.selectedAddition_19 = selectedAddition;
+    this.player_08.addition = REGISTRIES.additions.getEntry(selectedAddition).get();
+
+    if(additionChanged) {
+      this.player_08.combatant_144.mrg_04 = null;
+      this.hud.battle.loadAttackAnimations(this.player_08.combatant_144);
+    }
+
     this.additionChosen = true;
 
     if(this.attackSelection) {

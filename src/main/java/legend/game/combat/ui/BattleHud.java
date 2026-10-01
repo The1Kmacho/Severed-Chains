@@ -1433,9 +1433,13 @@ public class BattleHud {
    */
   @Method(0x800f6330L)
   public BattleAction tickAndRender() {
-    final BattleAction queuedAction = this.consumeQueuedBattleAction();
-    if(queuedAction != null) {
-      return queuedAction;
+    if(this.queuedBattleAction != null) {
+      final PlayerBattleEntity player = this.battleMenu_800c6c34.player_04;
+      if(player != null && player.combatant_144 != null && player.combatant_144.mrg_04 == null) {
+        return null;
+      }
+
+      return this.consumeQueuedBattleAction();
     }
 
     if(this.battleMenu_800c6c34.state_00 == 0) {
