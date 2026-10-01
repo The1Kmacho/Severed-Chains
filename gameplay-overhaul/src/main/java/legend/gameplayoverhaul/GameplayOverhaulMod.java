@@ -19,6 +19,7 @@ import legend.game.combat.effects.GenericAttachment1c;
 import legend.game.combat.effects.GuardEffect06;
 import legend.game.combat.types.AttackType;
 import legend.game.modding.events.battle.BattleEffectDisplayEvent;
+import legend.game.modding.events.battle.BattleEntityTurnEvent;
 import legend.game.modding.events.battle.BattleIntroCameraEvent;
 import legend.game.modding.events.battle.IncomingAttackCueEvent;
 import legend.game.modding.events.characters.AdditionDescriptionEvent;
@@ -135,7 +136,14 @@ public final class GameplayOverhaulMod {
       activeParryReticle
     );
 
-    focusParryCamera(event.attacker);
+    focusParryCamera(event.attacker, expectedImpactTicks);
+  }
+
+  @EventListener
+  public static void battleEntityTurn(final BattleEntityTurnEvent<?> event) {
+    if(parryCameraActive && activeCueAttacker == null) {
+      restoreParryCamera();
+    }
   }
 
   @EventListener
@@ -407,7 +415,6 @@ public final class GameplayOverhaulMod {
     // bookkeeping so the next attack never tries to deallocate an old state.
     activeParryOverlay = null;
     activeParryReticle = null;
-    restoreParryCamera();
     activeCueAttacker = null;
     activeCueDefender = null;
     activeCueAttackType = null;
@@ -425,7 +432,7 @@ public final class GameplayOverhaulMod {
     restoreParryCamera();
   }
 
-  private static void focusParryCamera(final BattleEntity27c attacker) {
+  private static void focusParryCamera(final BattleEntity27c attacker, final int expectedImpactTicks) {
     if(!(currentEngineState_8004dd04 instanceof final Battle battle)
       || !(activeCueDefender instanceof final PlayerBattleEntity defender)) {
       return;
@@ -458,13 +465,15 @@ public final class GameplayOverhaulMod {
     final Vector3f desiredRefpoint = new Vector3f(savedCameraRefpoint)
       .add(new Vector3f(attackDirection).mul(refpointTravel));
 
+    final int cameraTicks = java.lang.Math.max(8, java.lang.Math.min(24, expectedImpactTicks));
+
     camera.cameraMoveRefpoint(
       0,
       desiredRefpoint.x,
       desiredRefpoint.y,
       desiredRefpoint.z,
       0,
-      6,
+      cameraTicks,
       0,
       null
     );
@@ -483,7 +492,7 @@ public final class GameplayOverhaulMod {
       angleX,
       angleY,
       magnitude,
-      6,
+      cameraTicks,
       1,
       1.0f,
       0,
@@ -505,7 +514,7 @@ public final class GameplayOverhaulMod {
       savedCameraViewpoint.x,
       savedCameraViewpoint.y,
       savedCameraViewpoint.z,
-      6,
+      8,
       0,
       0.0f,
       0,
@@ -516,7 +525,7 @@ public final class GameplayOverhaulMod {
       savedCameraRefpoint.x,
       savedCameraRefpoint.y,
       savedCameraRefpoint.z,
-      6,
+      8,
       0,
       0.0f,
       0,
@@ -531,71 +540,111 @@ public final class GameplayOverhaulMod {
     final RegistryId id,
     final AttackSpecialEffectEvent event
   ) {
+    String notification = null;
+
     if(isAddition(id, LodAdditions.DOUBLE_SLASH.getId())) {
       setAttack(player, "double_slash_attack", 10, selfEffectTurns(2));
+      notification = "+10% ATK (2T)";
     } else if(isAddition(id, LodAdditions.VOLCANO.getId())) {
       setDefense(defender, "volcano_defense_down", -15, 3);
+      notification = "ENEMY DEF -15% (3T)";
     } else if(isAddition(id, LodAdditions.BURNING_RUSH.getId())) {
       setSpeed(player, "burning_rush_speed", 20, selfEffectTurns(2));
+      notification = "+20% SPD (2T)";
     } else if(isAddition(id, LodAdditions.CRUSH_DANCE.getId())) {
       setAttack(defender, "crush_dance_attack_down", -15, 3);
+      notification = "ENEMY ATK -15% (3T)";
     } else if(isAddition(id, LodAdditions.MADNESS_HERO.getId())) {
       setSpeed(player, "madness_hero_speed", 30, selfEffectTurns(3));
+      notification = "+30% SPD (3T)";
     } else if(isAddition(id, LodAdditions.MOON_STRIKE.getId())) {
       setDefense(defender, "moon_strike_defense_down", -25, 2);
+      notification = "ENEMY DEF -25% (2T)";
     } else if(isAddition(id, LodAdditions.BLAZING_DYNAMO.getId())) {
-      forceStatusIfAllowed(event, 0x10);
+      if(forceStatusIfAllowed(event, 0x10)) {
+        notification = "+STUN";
+      }
 
     } else if(isAddition(id, LodAdditions.HARPOON.getId(), LodAdditions.ALBERT_HARPOON.getId())) {
       setDefense(player, "harpoon_defense", 15, selfEffectTurns(2));
+      notification = "+15% DEF (2T)";
     } else if(isAddition(id, LodAdditions.SPINNING_CANE.getId(), LodAdditions.ALBERT_SPINNING_CANE.getId())) {
       setAttack(defender, "spinning_cane_attack_down", -15, 3);
+      notification = "ENEMY ATK -15% (3T)";
     } else if(isAddition(id, LodAdditions.ROD_TYPHOON.getId(), LodAdditions.ALBERT_ROD_TYPHOON.getId())) {
       setAttack(player, "rod_typhoon_attack", 15, selfEffectTurns(2));
+      notification = "+15% ATK (2T)";
     } else if(isAddition(id, LodAdditions.GUST_OF_WIND_DANCE.getId(), LodAdditions.ALBERT_GUST_OF_WIND_DANCE.getId())) {
       setSpeed(player, "gust_speed", 25, selfEffectTurns(3));
+      notification = "+25% SPD (3T)";
     } else if(isAddition(id, LodAdditions.FLOWER_STORM.getId(), LodAdditions.ALBERT_FLOWER_STORM.getId())) {
       setDefense(player, "flower_storm_defense", 50, selfEffectTurns(3));
+      notification = "+50% DEF (3T)";
 
     } else if(isAddition(id, LodAdditions.WHIP_SMACK.getId())) {
       healPercent(player, 8);
+      notification = "+8% HP";
     } else if(isAddition(id, LodAdditions.MORE_MORE.getId())) {
       setSpeed(player, "more_more_speed", 20, selfEffectTurns(3));
+      notification = "+20% SPD (3T)";
     } else if(isAddition(id, LodAdditions.HARD_BLADE.getId())) {
       setDefense(defender, "hard_blade_defense_down", -25, 3);
+      notification = "ENEMY DEF -25% (3T)";
     } else if(isAddition(id, LodAdditions.DEMONS_DANCE.getId())) {
-      forceStatusIfAllowed(event, 0x08);
+      if(forceStatusIfAllowed(event, 0x08)) {
+        notification = "+FEAR";
+      }
 
     } else if(isAddition(id, LodAdditions.DOUBLE_PUNCH.getId())) {
       setSpeed(player, "double_punch_speed", 15, selfEffectTurns(2));
+      notification = "+15% SPD (2T)";
     } else if(isAddition(id, LodAdditions.FERRY_OF_STYX.getId())) {
       healPercent(player, 10);
+      notification = "+10% HP";
     } else if(isAddition(id, LodAdditions.SUMMON_4_GODS.getId())) {
       setAttack(player, "summon_4_gods_attack", 15, selfEffectTurns(3));
+      notification = "+15% ATK (3T)";
     } else if(isAddition(id, LodAdditions.FIVE_RING_SHATTERING.getId())) {
       setDefense(defender, "five_ring_defense_down", -20, 3);
+      notification = "ENEMY DEF -20% (3T)";
     } else if(isAddition(id, LodAdditions.HEX_HAMMER.getId())) {
-      forceStatusIfAllowed(event, 0x10);
+      if(forceStatusIfAllowed(event, 0x10)) {
+        notification = "+STUN";
+      }
     } else if(isAddition(id, LodAdditions.OMNI_SWEEP.getId())) {
       setSpeed(player, "omni_sweep_speed", 50, selfEffectTurns(3));
+      notification = "+50% SPD (3T)";
 
     } else if(isAddition(id, LodAdditions.DOUBLE_SMACK.getId())) {
       healPercent(player, 8);
+      notification = "+8% HP";
     } else if(isAddition(id, LodAdditions.HAMMER_SPIN.getId())) {
       setSpeed(player, "hammer_spin_speed", 20, selfEffectTurns(3));
+      notification = "+20% SPD (3T)";
     } else if(isAddition(id, LodAdditions.COOL_BOOGIE.getId())) {
       grantSp(player, 25);
+      notification = "+25 SP";
     } else if(isAddition(id, LodAdditions.CATS_CRADLE.getId())) {
       setSpeed(defender, "cats_cradle_slow", -25, 3);
+      notification = "ENEMY SPD -25% (3T)";
     } else if(isAddition(id, LodAdditions.PERKY_STEP.getId())) {
-      forceStatusIfAllowed(event, 0x10);
+      if(forceStatusIfAllowed(event, 0x10)) {
+        notification = "+STUN";
+      }
 
     } else if(isAddition(id, LodAdditions.PURSUIT.getId())) {
       setDefense(defender, "pursuit_defense_down", -15, 3);
+      notification = "ENEMY DEF -15% (3T)";
     } else if(isAddition(id, LodAdditions.INFERNO.getId())) {
       setAttack(player, "inferno_attack", 25, selfEffectTurns(3));
+      notification = "+25% ATK (3T)";
     } else if(isAddition(id, LodAdditions.BONE_CRUSH.getId())) {
       setAttack(player, "bone_crush_attack", 50, selfEffectTurns(3));
+      notification = "+50% ATK (3T)";
+    }
+
+    if(notification != null && currentEngineState_8004dd04 instanceof final Battle battle) {
+      battle.hud.showEffectNotification(notification);
     }
   }
 
@@ -625,7 +674,6 @@ public final class GameplayOverhaulMod {
       new RegistryId(MOD_ID, key),
       LodMod.UNARY_STAT_MOD_TYPE.get().make(new UnaryStatModConfig().percent(percent).turns(turns))
     );
-    spawnMomentumPulse(entity, percent >= 0 ? MomentumVisual.POWER : MomentumVisual.DEBUFF);
   }
 
   private static void setDefense(
@@ -638,7 +686,6 @@ public final class GameplayOverhaulMod {
       new RegistryId(MOD_ID, key),
       LodMod.UNARY_STAT_MOD_TYPE.get().make(new UnaryStatModConfig().percent(percent).turns(turns))
     );
-    spawnMomentumPulse(entity, percent >= 0 ? MomentumVisual.DEFENSE : MomentumVisual.DEBUFF);
   }
 
   private static void setSpeed(
@@ -651,7 +698,6 @@ public final class GameplayOverhaulMod {
       new RegistryId(MOD_ID, key),
       LodMod.UNARY_STAT_MOD_TYPE.get().make(new UnaryStatModConfig().percent(percent).turns(turns))
     );
-    spawnMomentumPulse(entity, percent >= 0 ? MomentumVisual.SPEED : MomentumVisual.DEBUFF);
   }
 
   private static void grantSp(final PlayerBattleEntity player, final int amount) {
@@ -660,40 +706,6 @@ public final class GameplayOverhaulMod {
     spGained_800bc950.mergeInt(player.character, amount, Integer::sum);
   }
 
-  private enum MomentumVisual {
-    POWER,
-    DEFENSE,
-    SPEED,
-    DEBUFF,
-  }
-
-  private static void spawnMomentumPulse(final BattleEntity27c entity, final MomentumVisual visual) {
-    final var effectState = SEffe.allocateEffectManager(
-      "GameplayOverhaulMomentum" + visual,
-      null,
-      new GuardEffect06()
-    );
-    final var manager = effectState.innerStruct_00;
-
-    switch(visual) {
-      case POWER -> manager.params_10.colour_1c.set(0xff, 0x58, 0x20);
-      case DEFENSE -> manager.params_10.colour_1c.set(0x38, 0x88, 0xff);
-      case SPEED -> manager.params_10.colour_1c.set(0x38, 0xe0, 0xff);
-      case DEBUFF -> manager.params_10.colour_1c.set(0xb0, 0x38, 0xd8);
-    }
-
-    manager.params_10.scale_16.set(-0.32f, visual == MomentumVisual.SPEED ? 0.95f : 0.72f, 0.72f);
-    manager.params_10.trans_04.set(0.0f, -700.0f, -420.0f);
-    entity.getRelativePosition(manager.params_10.trans_04);
-
-    final GenericAttachment1c lifespan = manager.addAttachment(
-      0,
-      0,
-      SEffe::tickLifespanAttachment,
-      new GenericAttachment1c()
-    );
-    lifespan.ticksRemaining_1a = 12;
-  }
 
   private static void appendMomentumStatEffect(
     final BattleEffectDisplayEvent event,
@@ -808,19 +820,20 @@ public final class GameplayOverhaulMod {
     hp.setCurrent(Math.min(hp.getMax(), hp.getCurrent() + Math.max(1, hp.getMax() * percent / 100)));
   }
 
-  private static void forceStatusIfAllowed(final AttackSpecialEffectEvent event, final int status) {
+  private static boolean forceStatusIfAllowed(final AttackSpecialEffectEvent event, final int status) {
     if((event.defender.specialEffectFlag_14 & 0x80) != 0) {
-      return;
+      return false;
     }
 
     if((event.defender.equipmentStatusResist_24 & status) != 0) {
-      return;
+      return false;
     }
 
     if(event.defender instanceof final MonsterBattleEntity monster && (monster.monsterStatusResistFlag_76 & status) != 0) {
-      return;
+      return false;
     }
 
     event.effect = status;
+    return true;
   }
 }
