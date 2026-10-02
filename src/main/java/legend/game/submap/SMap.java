@@ -443,6 +443,10 @@ public class SMap extends EngineState<SMap> {
     super(LodEngineStateTypes.SUBMAP.get());
   }
 
+  public CollisionGeometry getCollisionGeometry() {
+    return this.collisionGeometry_800cbe08;
+  }
+
   @Override
   public void init() {
     lastSavableEngineState = this.type;
@@ -2919,6 +2923,10 @@ public class SMap extends EngineState<SMap> {
   @Method(0x800e0ff0L)
   private void submapObjectTicker(final ScriptState<SubmapObject210> state, final SubmapObject210 sobj) {
     final Model124 model = sobj.model_00;
+
+    if(sobj instanceof final SubmapObjectTickable tickable) {
+      tickable.tick(this, state, sobj);
+    }
 
     if(sobj.cameraAttached_178) {
       GTE.setTransforms(worldToScreenMatrix_800c3548);
