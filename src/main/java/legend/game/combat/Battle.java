@@ -3830,8 +3830,10 @@ public class Battle extends EngineState<Battle> {
     final float x = script.params_20[3].get() - vec.x;
     final float y = script.params_20[4].get() - vec.y;
     final float z = script.params_20[5].get() - vec.z;
-    this.FUN_800cdc1c(childState, vec.x, vec.y, vec.z, script.params_20[3].get(), script.params_20[4].get(), script.params_20[5].get(), 0, Math.round(Math.sqrt(x * x + y * y + z * z) / script.params_20[2].get()));
+    final int movementTicks = Math.round(Math.sqrt(x * x + y * y + z * z) / script.params_20[2].get());
+    this.FUN_800cdc1c(childState, vec.x, vec.y, vec.z, script.params_20[3].get(), script.params_20[4].get(), script.params_20[5].get(), 0, movementTicks);
     childState.setTempTicker(this::FUN_800cb250);
+    this.postIncomingPhysicalCueFromMovement(childState, parentBentIndex, movementTicks);
     return FlowControl.CONTINUE;
   }
 
@@ -3894,8 +3896,10 @@ public class Battle extends EngineState<Battle> {
     final float x = script.params_20[3].get() - vec.x;
     final float y = script.params_20[4].get() - vec.y;
     final float z = script.params_20[5].get() - vec.z;
-    this.FUN_800cdc1c(childState, vec.x, vec.y, vec.z, script.params_20[3].get(), script.params_20[4].get(), script.params_20[5].get(), 0x20, Math.round(Math.sqrt(x * x + y * y + z * z) / script.params_20[2].get()));
+    final int movementTicks = Math.round(Math.sqrt(x * x + y * y + z * z) / script.params_20[2].get());
+    this.FUN_800cdc1c(childState, vec.x, vec.y, vec.z, script.params_20[3].get(), script.params_20[4].get(), script.params_20[5].get(), 0x20, movementTicks);
     childState.setTempTicker(this::FUN_800cb250);
+    this.postIncomingPhysicalCueFromMovement(childState, parentBentIndex, movementTicks);
     return FlowControl.CONTINUE;
   }
 
@@ -3952,8 +3956,10 @@ public class Battle extends EngineState<Battle> {
     //LAB_800cc27c
     final float x = script.params_20[3].get() - vec.x;
     final float z = script.params_20[4].get() - vec.z;
-    this.FUN_800cdc1c(childState, vec.x, vec.y, vec.z, script.params_20[3].get(), vec.y, script.params_20[4].get(), 0, Math.round(Math.sqrt(x * x + z * z) / script.params_20[2].get()));
+    final int movementTicks = Math.round(Math.sqrt(x * x + z * z) / script.params_20[2].get());
+    this.FUN_800cdc1c(childState, vec.x, vec.y, vec.z, script.params_20[3].get(), vec.y, script.params_20[4].get(), 0, movementTicks);
     childState.setTempTicker(this::FUN_800cb250);
+    this.postIncomingPhysicalCueFromMovement(childState, parentBentIndex, movementTicks);
     return FlowControl.CONTINUE;
   }
 
@@ -3982,6 +3988,7 @@ public class Battle extends EngineState<Battle> {
     //LAB_800cc3fc
     this.FUN_800cdc1c(childState, vec.x, vec.y, vec.z, script.params_20[3].get(), vec.y, script.params_20[4].get(), 0x20, script.params_20[2].get());
     childState.setTempTicker(this::FUN_800cb250);
+    this.postIncomingPhysicalCueFromMovement(childState, parentBentIndex, script.params_20[2].get());
     return FlowControl.CONTINUE;
   }
 
@@ -4010,8 +4017,10 @@ public class Battle extends EngineState<Battle> {
     //LAB_800cc51c
     final float x = script.params_20[3].get() - vec.x;
     final float z = script.params_20[4].get() - vec.z;
-    this.FUN_800cdc1c(childState, vec.x, vec.y, vec.z, script.params_20[3].get(), vec.y, script.params_20[4].get(), 0x20, Math.round(Math.sqrt(x * x + z * z) / script.params_20[2].get()));
+    final int movementTicks = Math.round(Math.sqrt(x * x + z * z) / script.params_20[2].get());
+    this.FUN_800cdc1c(childState, vec.x, vec.y, vec.z, script.params_20[3].get(), vec.y, script.params_20[4].get(), 0x20, movementTicks);
     childState.setTempTicker(this::FUN_800cb250);
+    this.postIncomingPhysicalCueFromMovement(childState, parentBentIndex, movementTicks);
     return FlowControl.CONTINUE;
   }
 
@@ -9139,38 +9148,50 @@ public class Battle extends EngineState<Battle> {
   ) {
     if(attackerState != this.currentTurnBent_800c66c8
       || attackerState == this.earlyPhysicalCueTurn
-      || !(attackerState.innerStruct_00 instanceof final MonsterBattleEntity attacker)
-      || defenderIndex < 0) {
+      || !(attackerState.innerStruct_00 instanceof final MonsterBattleEntity attacker)) {
       return;
     }
 
-    final BattleEntity27c defender = SCRIPTS.getObject(defenderIndex, BattleEntity27c.class);
-    if(!(defender instanceof PlayerBattleEntity)) {
-      return;
-    }
-
-    // This movement helper is shared by normal melee and scripted
-    // item/spell/status actions. Only create the early counter cue when the
-    // enemy has not already declared a non-physical action. Non-physical hit
-    // checks still post their own explicit cue event later for warning text,
-    // but they must never flash a provisional parry square first.
+    // Generic movement is also used by item/spell/status actions. Once the
+    // enemy has declared one of those, this movement is never a parry cue.
     if(attacker.item_d4 != null || attacker.spell_94 != null) {
       return;
     }
 
     this.earlyPhysicalCueTurn = attackerState;
 
-    // The movement duration is the earliest reliable piece of attack-specific
-    // timing we have. Give the overlay a small strike-animation allowance so
-    // its spiral remains visible through the approach and closes near impact.
-    final int suggestedImpactTicks = java.lang.Math.max(12, movementTicks + 8);
-    EVENTS.postEvent(new IncomingAttackCueEvent(
-      this,
-      attacker,
-      defender,
-      AttackType.PHYSICAL,
-      suggestedImpactTicks
-    ));
+    // Use the movement's real duration instead of manufacturing a minimum.
+    // The gameplay mod decides whether this lead time is actually fair enough
+    // to expose as a parry window.
+    final int suggestedImpactTicks = java.lang.Math.max(1, movementTicks + 8);
+
+    if(defenderIndex >= 0) {
+      final BattleEntity27c defender = SCRIPTS.getObject(defenderIndex, BattleEntity27c.class);
+      if(defender instanceof PlayerBattleEntity) {
+        EVENTS.postEvent(new IncomingAttackCueEvent(
+          this,
+          attacker,
+          defender,
+          AttackType.PHYSICAL,
+          suggestedImpactTicks
+        ));
+      }
+      return;
+    }
+
+    // An unparented enemy approach is how a number of physical party-wide
+    // scripts stage their attack. Announce every living player up front so
+    // mods can present concurrent defender-specific timing cues instead of
+    // discovering each target only at its hit check.
+    for(final ScriptState<PlayerBattleEntity> playerState : battleState_8006e398.alivePlayerBents_eac) {
+      EVENTS.postEvent(new IncomingAttackCueEvent(
+        this,
+        attacker,
+        playerState.innerStruct_00,
+        AttackType.PHYSICAL,
+        suggestedImpactTicks
+      ));
+    }
   }
 
   @ScriptDescription("Checks if a battle entity's physical attack hits another battle entity")

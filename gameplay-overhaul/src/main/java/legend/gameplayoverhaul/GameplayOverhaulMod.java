@@ -41,7 +41,9 @@ import org.legendofdragoon.modloader.events.EventListener;
 import org.legendofdragoon.modloader.registries.RegistryId;
 import org.joml.Vector3f;
 
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
@@ -75,18 +77,45 @@ public final class GameplayOverhaulMod {
   private static final Map<MonsterBattleEntity, Integer> BREAK_GAUGE = new HashMap<>();
   private static final Map<Integer, RegistryId> LAST_COMPLETED_ADDITIONS = new HashMap<>();
 
-  private static int lastParryTick = Integer.MIN_VALUE;
-  private static int negatedAttackTick = Integer.MIN_VALUE;
-  private static BattleEntity27c negatedDefender;
+  private static final int MIN_PARRY_REACTION_TICKS = 14;
+
+  private static final class ParryCue {
+    private final MonsterBattleEntity attacker;
+    private final PlayerBattleEntity defender;
+    private final AttackType attackType;
+    private final int startTick;
+    private final String key;
+    private final int expectedImpactTick;
+    private final int windowStartTick;
+    private final boolean parryable;
+    private ScriptState<?> overlay;
+    private AdditionOverlaysEffect44 reticle;
+    private int pressTick = Integer.MIN_VALUE;
+    private boolean pressConsumed;
+
+    private ParryCue(
+      final MonsterBattleEntity attacker,
+      final PlayerBattleEntity defender,
+      final AttackType attackType,
+      final int startTick,
+      final String key,
+      final int expectedImpactTicks,
+      final boolean parryable
+    ) {
+      this.attacker = attacker;
+      this.defender = defender;
+      this.attackType = attackType;
+      this.startTick = startTick;
+      this.key = key;
+      this.expectedImpactTick = startTick + expectedImpactTicks;
+      this.windowStartTick = this.expectedImpactTick - PARRY_WINDOW_TICKS + 1;
+      this.parryable = parryable;
+    }
+  }
 
   private static final Map<String, Integer> PARRY_CUE_TIMINGS = new HashMap<>();
-  private static BattleEntity27c activeCueAttacker;
-  private static BattleEntity27c activeCueDefender;
-  private static AttackType activeCueAttackType;
-  private static int activeCueStartTick = Integer.MIN_VALUE;
-  private static String activeCueKey;
-  private static legend.game.scripting.ScriptState<?> activeParryOverlay;
-  private static AdditionOverlaysEffect44 activeParryReticle;
+  private static final List<ParryCue> ACTIVE_PARRY_CUES = new ArrayList<>();
+  private static final Map<BattleEntity27c, Integer> NEGATED_ATTACKS = new HashMap<>();
   private static ScriptState<BattleEntity27c> activeParryCameraTracker;
   private static BattleEntity27c parryCameraAttacker;
   private static PlayerBattleEntity parryCameraDefender;
@@ -149,7 +178,7 @@ public final class GameplayOverhaulMod {
     }
 
     if(event.action == LodMod.INPUT_ACTION_BTTL_COUNTER.get()) {
-      lastParryTick = tickCount_800bb0fc;
+      consumeParryInput(tickCount_800bb0fc);
     }
   }
 
@@ -185,64 +214,81 @@ public final class GameplayOverhaulMod {
 
   @EventListener
   public static void incomingAttackCue(final IncomingAttackCueEvent event) {
-    if(!(event.attacker instanceof MonsterBattleEntity)
-      || !(event.defender instanceof PlayerBattleEntity)) {
+    if(!(event.attacker instanceof final MonsterBattleEntity attacker)
+      || !(event.defender instanceof final PlayerBattleEntity defender)) {
       return;
     }
 
-    // Player parries are intentionally limited to normal physical attacks.
-    // Item/spell/status hit checks are also useful as a cancellation signal:
-    // a generic movement helper may have provisionally looked like a melee
-    // approach before the enemy script revealed its real non-physical action.
     if(event.attackType != AttackType.PHYSICAL) {
-      if(activeCueAttacker == event.attacker && activeCueDefender == event.defender) {
-        cancelParryCue();
-      }
+      cancelParryCuesForAttacker(attacker);
       event.battle.hud.showEffectNotification("SPECIAL - NO PARRY", TextColour.PURPLE);
       return;
     }
 
-    // Enemy melee scripts often hit the normal hit-check only a few ticks
-    // before damage. If an earlier movement cue already started this exact
-    // attack, the hit-check is only confirmation and must not restart the
-    // spiral or camera.
-    if(activeCueAttacker == event.attacker
-      && activeCueDefender == event.defender
-      && activeCueAttackType == event.attackType) {
+    // A later physical hit-check confirms an already-announced cue. It must not
+    // restart the reticle, shift its timing, or replace another party member's
+    // concurrently active cue.
+    if(findParryCue(attacker, defender, event.attackType) != null) {
       return;
     }
 
-    cancelParryCue();
+    // Hit-check-only attacks arrive too late to offer meaningful reaction time.
+    // Keep them non-parryable rather than flashing an impossible square.
+    if(event.suggestedImpactTicks <= 0) {
+      return;
+    }
 
-    activeCueAttacker = event.attacker;
-    activeCueDefender = event.defender;
-    activeCueAttackType = event.attackType;
-    activeCueStartTick = tickCount_800bb0fc;
-    activeCueKey = attackCueKey(event.attacker, event.attackType);
-    lastParryTick = Integer.MIN_VALUE;
+    final int now = tickCount_800bb0fc;
+    final String key = attackCueKey(attacker, defender, event.attackType);
+    final Integer learnedTicks = PARRY_CUE_TIMINGS.get(key);
+    final int expectedImpactTicks = learnedTicks == null
+      ? event.suggestedImpactTicks
+      : java.lang.Math.max(
+        1,
+        java.lang.Math.round(learnedTicks * 0.75f + event.suggestedImpactTicks * 0.25f)
+      );
+    final boolean parryable =
+      expectedImpactTicks >= MIN_PARRY_REACTION_TICKS
+        && event.suggestedImpactTicks >= MIN_PARRY_REACTION_TICKS;
 
-    final int expectedImpactTicks = PARRY_CUE_TIMINGS.getOrDefault(
-      activeCueKey,
-      event.suggestedImpactTicks > 0 ? event.suggestedImpactTicks : DEFAULT_PARRY_CUE_TICKS
+    final ParryCue cue = new ParryCue(
+      attacker,
+      defender,
+      event.attackType,
+      now,
+      key,
+      expectedImpactTicks,
+      parryable
     );
-    activeParryReticle = new AdditionOverlaysEffect44(
+    ACTIVE_PARRY_CUES.add(cue);
+
+    // Even short cues remain as timing observations so a later use can become
+    // parryable if the measured attack really does provide enough lead time.
+    if(!parryable) {
+      return;
+    }
+
+    cue.reticle = new AdditionOverlaysEffect44(
       expectedImpactTicks,
       PARRY_WINDOW_TICKS,
       true
     );
-    activeParryOverlay = SEffe.allocateEffectManager(
+    cue.reticle.setVisualOnlyAnchor(defender);
+    cue.overlay = SEffe.allocateEffectManager(
       "GameplayOverhaulParryTiming",
       null,
-      activeParryReticle
+      cue.reticle
     );
 
-    focusParryCamera(event.attacker, expectedImpactTicks);
+    if(!parryCameraActive) {
+      focusParryCamera(attacker, defender);
+    }
   }
 
   @EventListener
   public static void battleEntityTurn(final BattleEntityTurnEvent<?> event) {
-    if(activeCueAttacker != null) {
-      cancelParryCue();
+    if(!ACTIVE_PARRY_CUES.isEmpty()) {
+      cancelParryCues();
     } else if(parryCameraActive) {
       restoreParryCamera();
     }
@@ -254,12 +300,13 @@ public final class GameplayOverhaulMod {
 
   @EventListener
   public static void battleEnded(final BattleEndedEvent event) {
-    cancelParryCue();
+    cancelParryCues();
     if(activeArcherPlayer != null) {
       clearArcherAdditionState();
     }
     BREAK_GAUGE.clear();
     LAST_COMPLETED_ADDITIONS.clear();
+    NEGATED_ATTACKS.clear();
   }
 
   @EventListener
@@ -285,30 +332,25 @@ public final class GameplayOverhaulMod {
 
   @EventListener
   public static void attack(final AttackEvent event) {
-    if(event.attacker instanceof MonsterBattleEntity && event.defender instanceof PlayerBattleEntity) {
+    if(event.attacker instanceof final MonsterBattleEntity monster
+      && event.defender instanceof final PlayerBattleEntity defender) {
       if(event.attackType != AttackType.PHYSICAL) {
-        if(activeCueAttacker == event.attacker && activeCueDefender == event.defender) {
-          cancelParryCue();
-        }
-        lastParryTick = Integer.MIN_VALUE;
+        cancelParryCuesForAttacker(monster);
       } else {
-        final int now = tickCount_800bb0fc;
-        final boolean cueMatches = finishParryCue(event.attacker, event.defender, event.attackType, now);
-        final int parryAge = now - lastParryTick;
+        final ParryCue cue = finishParryCue(monster, defender, event.attackType, tickCount_800bb0fc);
 
-        if(cueMatches && parryAge >= 0 && parryAge <= PARRY_WINDOW_TICKS) {
+        if(cue != null
+          && cue.parryable
+          && cue.pressConsumed
+          && cue.pressTick >= cue.windowStartTick
+          && cue.pressTick <= cue.expectedImpactTick) {
           event.damage = 0;
-          lastParryTick = Integer.MIN_VALUE;
-          markNegatedAttack(event.defender);
-          playParryReaction((PlayerBattleEntity)event.defender);
-          if(event.attacker instanceof final MonsterBattleEntity monster) {
-            addBreak(monster, BREAK_PARRY_GAIN, false, false);
-          }
+          markNegatedAttack(defender);
+          playParryReaction(defender);
+          addBreak(monster, BREAK_PARRY_GAIN, false, false);
           LOGGER.info("[Gameplay Overhaul] PARRY");
           return;
         }
-
-        lastParryTick = Integer.MIN_VALUE;
       }
     }
 
@@ -355,10 +397,10 @@ public final class GameplayOverhaulMod {
       event.effect = -1;
     }
 
-    if(event.defender == negatedDefender && tickCount_800bb0fc == negatedAttackTick) {
+    final Integer negatedTick = NEGATED_ATTACKS.get(event.defender);
+    if(negatedTick != null && tickCount_800bb0fc == negatedTick) {
       event.effect = -1;
-      negatedDefender = null;
-      negatedAttackTick = Integer.MIN_VALUE;
+      NEGATED_ATTACKS.remove(event.defender);
       return;
     }
 
@@ -687,69 +729,138 @@ public final class GameplayOverhaulMod {
     info.xp++;
   }
 
-  private static String attackCueKey(final BattleEntity27c attacker, final AttackType attackType) {
+  private static String attackCueKey(
+    final BattleEntity27c attacker,
+    final PlayerBattleEntity defender,
+    final AttackType attackType
+  ) {
     final int animationIndex =
       attacker.currentAnimIndex_270 >= 0
         ? attacker.currentAnimIndex_270
         : attacker.loadingAnimIndex_26e;
-    return attacker.charId_272 + ":" + animationIndex + ":" + attackType.name();
+    return attacker.charId_272
+      + ":" + animationIndex
+      + ":" + attackType.name()
+      + ":" + defender.typeBentSlot_276;
   }
 
-  private static boolean finishParryCue(
+  private static ParryCue findParryCue(
     final BattleEntity27c attacker,
     final BattleEntity27c defender,
+    final AttackType attackType
+  ) {
+    for(final ParryCue cue : ACTIVE_PARRY_CUES) {
+      if(cue.attacker == attacker
+        && cue.defender == defender
+        && cue.attackType == attackType) {
+        return cue;
+      }
+    }
+
+    return null;
+  }
+
+  private static void consumeParryInput(final int now) {
+    ParryCue earliest = null;
+
+    for(final ParryCue cue : ACTIVE_PARRY_CUES) {
+      if(!cue.parryable || cue.pressConsumed || now > cue.expectedImpactTick) {
+        continue;
+      }
+
+      if(earliest == null || cue.expectedImpactTick < earliest.expectedImpactTick) {
+        earliest = cue;
+      }
+    }
+
+    if(earliest == null) {
+      return;
+    }
+
+    // One press belongs to exactly one cue: the earliest unresolved window.
+    // A second overlapping reticle cannot steal that input. Once the earliest
+    // cue has consumed a press (success or early failure), the next press may
+    // address the next cue.
+    earliest.pressConsumed = true;
+    earliest.pressTick = now;
+
+    if(now < earliest.windowStartTick && earliest.reticle != null) {
+      earliest.reticle.completeVisualOnly(false);
+      earliest.overlay = null;
+      earliest.reticle = null;
+    }
+  }
+
+  private static ParryCue finishParryCue(
+    final MonsterBattleEntity attacker,
+    final PlayerBattleEntity defender,
     final AttackType attackType,
     final int impactTick
   ) {
-    if(activeCueAttacker != attacker
-      || activeCueDefender != defender
-      || activeCueAttackType != attackType) {
-      return false;
+    final ParryCue cue = findParryCue(attacker, defender, attackType);
+    if(cue == null) {
+      return null;
     }
 
-    final int measuredTicks = java.lang.Math.max(1, impactTick - activeCueStartTick);
-    if(activeCueKey != null) {
-      PARRY_CUE_TIMINGS.merge(
-        activeCueKey,
-        measuredTicks,
-        (oldValue, newValue) -> java.lang.Math.max(
-          PARRY_WINDOW_TICKS + 1,
-          java.lang.Math.round(oldValue * 0.75f + newValue * 0.25f)
-        )
-      );
+    final int measuredTicks = java.lang.Math.max(1, impactTick - cue.startTick);
+    PARRY_CUE_TIMINGS.merge(
+      cue.key,
+      measuredTicks,
+      (oldValue, newValue) -> java.lang.Math.max(
+        1,
+        java.lang.Math.round(oldValue * 0.75f + newValue * 0.25f)
+      )
+    );
+
+    final boolean successful =
+      cue.parryable
+        && measuredTicks >= MIN_PARRY_REACTION_TICKS
+        && cue.pressConsumed
+        && cue.pressTick >= cue.windowStartTick
+        && cue.pressTick <= cue.expectedImpactTick;
+
+    if(cue.reticle != null) {
+      cue.reticle.completeVisualOnly(successful);
+      cue.overlay = null;
+      cue.reticle = null;
     }
 
-    if(activeParryReticle != null) {
-      final int parryAge = impactTick - lastParryTick;
-      activeParryReticle.completeVisualOnly(parryAge >= 0 && parryAge <= PARRY_WINDOW_TICKS);
+    ACTIVE_PARRY_CUES.remove(cue);
+
+    if(parryCameraAttacker == attacker
+      && ACTIVE_PARRY_CUES.stream().noneMatch(active -> active.attacker == attacker)) {
+      parryCameraCueResolved = true;
     }
 
-    // The effect owns its two-frame success/failure flash from here; clear our
-    // bookkeeping so the next attack never tries to deallocate an old state.
-    activeParryOverlay = null;
-    activeParryReticle = null;
-    parryCameraCueResolved = true;
-    activeCueAttacker = null;
-    activeCueDefender = null;
-    activeCueAttackType = null;
-    activeCueStartTick = Integer.MIN_VALUE;
-    activeCueKey = null;
-    return true;
+    return successful ? cue : null;
   }
 
-  private static void cancelParryCue() {
-    if(activeParryOverlay != null) {
-      activeParryOverlay.deallocateWithChildren();
+  private static void cancelParryCuesForAttacker(final BattleEntity27c attacker) {
+    for(int i = ACTIVE_PARRY_CUES.size() - 1; i >= 0; i--) {
+      final ParryCue cue = ACTIVE_PARRY_CUES.get(i);
+      if(cue.attacker != attacker) {
+        continue;
+      }
+
+      if(cue.overlay != null) {
+        cue.overlay.deallocateWithChildren();
+      }
+      ACTIVE_PARRY_CUES.remove(i);
     }
 
-    activeParryOverlay = null;
-    activeParryReticle = null;
-    activeCueAttacker = null;
-    activeCueDefender = null;
-    activeCueAttackType = null;
-    activeCueStartTick = Integer.MIN_VALUE;
-    activeCueKey = null;
-    lastParryTick = Integer.MIN_VALUE;
+    if(parryCameraAttacker == attacker) {
+      restoreParryCamera();
+    }
+  }
+
+  private static void cancelParryCues() {
+    for(final ParryCue cue : ACTIVE_PARRY_CUES) {
+      if(cue.overlay != null) {
+        cue.overlay.deallocateWithChildren();
+      }
+    }
+
+    ACTIVE_PARRY_CUES.clear();
     restoreParryCamera();
   }
 
@@ -758,9 +869,11 @@ public final class GameplayOverhaulMod {
       .add(0.0f, -entity.middleOffsetY_86 * 50.0f, 0.0f);
   }
 
-  private static void focusParryCamera(final BattleEntity27c attacker, final int expectedImpactTicks) {
-    if(!(currentEngineState_8004dd04 instanceof final Battle battle)
-      || !(activeCueDefender instanceof final PlayerBattleEntity defender)) {
+  private static void focusParryCamera(
+    final BattleEntity27c attacker,
+    final PlayerBattleEntity defender
+  ) {
+    if(!(currentEngineState_8004dd04 instanceof final Battle battle)) {
       return;
     }
 
@@ -1213,8 +1326,7 @@ public final class GameplayOverhaulMod {
   }
 
   private static void markNegatedAttack(final BattleEntity27c defender) {
-    negatedDefender = defender;
-    negatedAttackTick = tickCount_800bb0fc;
+    NEGATED_ATTACKS.put(defender, tickCount_800bb0fc);
   }
 
   private static void playParryReaction(final PlayerBattleEntity defender) {
