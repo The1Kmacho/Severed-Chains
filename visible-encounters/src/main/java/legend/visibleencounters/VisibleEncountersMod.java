@@ -50,13 +50,18 @@ public final class VisibleEncountersMod {
 
   private static final int DESIRED_ACTORS_PER_MAP = 2;
   private static final int SPAWN_GRACE_TICKS = 60;
-  private static final float FIELD_MODEL_SCALE = 0.25f;
+  // Battle models use much larger world units than retail field SOBJs.
+  // 1/16 is the first-pass conversion; per-monster overrides can refine outliers.
+  private static final float FIELD_MODEL_SCALE = 0.0625f;
   private static final float PATROL_SPEED = 4.0f;
   private static final float CHASE_SPEED = 8.0f;
   private static final float SIGHT_DISTANCE = 700.0f;
   private static final float CLOSE_DETECTION_DISTANCE = 170.0f;
   private static final float LOSE_DISTANCE = 980.0f;
   private static final float CONTACT_DISTANCE = 62.0f;
+  private static final float CONTACT_VERTICAL_TOLERANCE = 72.0f;
+  private static final float SIGHT_VERTICAL_TOLERANCE = 180.0f;
+  private static final float SPAWN_VERTICAL_TOLERANCE = 220.0f;
   private static final float SPAWN_MIN_DISTANCE = 500.0f;
   private static final float SPAWN_MAX_DISTANCE = 1800.0f;
   private static final float SIGHT_COSINE = 0.50f; // 120-degree cone.
@@ -388,7 +393,8 @@ public final class VisibleEncountersMod {
       }
 
       if(this.state == State.CHASE) {
-        if(distance <= CONTACT_DISTANCE) {
+        if(distance <= CONTACT_DISTANCE
+          && java.lang.Math.abs(this.toPlayer.y) <= CONTACT_VERTICAL_TOLERANCE) {
           this.engage(smap);
           return;
         }
@@ -427,6 +433,11 @@ public final class VisibleEncountersMod {
         }
 
         collision.getMiddleOfCollisionPrimitive(primitive, this.spawnCandidate);
+
+        if(java.lang.Math.abs(this.spawnCandidate.y - playerPos.y) > SPAWN_VERTICAL_TOLERANCE) {
+          continue;
+        }
+
         final float dx = this.spawnCandidate.x - playerPos.x;
         final float dz = this.spawnCandidate.z - playerPos.z;
         final float distance = (float)java.lang.Math.sqrt(dx * dx + dz * dz);
@@ -460,6 +471,10 @@ public final class VisibleEncountersMod {
     }
 
     private boolean canSeePlayer(final float distance) {
+      if(java.lang.Math.abs(this.toPlayer.y) > SIGHT_VERTICAL_TOLERANCE) {
+        return false;
+      }
+
       if(distance <= CLOSE_DETECTION_DISTANCE) {
         return true;
       }
@@ -508,15 +523,11 @@ public final class VisibleEncountersMod {
       }
 
       this.movement.mul(speed / (float)java.lang.Math.sqrt(lengthSq));
-      final CollisionGeometry collision = smap.getCollisionGeometry();
-      this.collidedPrimitiveIndex_16c = collision.checkCollision(
-        true,
-        this.model_00.coord2_14,
-        this.movement,
-        false
-      );
 
-      this.model_00.coord2_14.coord.transfer.add(this.movement);
+      if(!smap.moveRuntimeSobj(this, this.movement)) {
+        this.movement.zero();
+        return;
+      }
 
       if(this.movement.x != 0.0f || this.movement.z != 0.0f) {
         this.model_00.coord2_14.transforms.rotate.y =

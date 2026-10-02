@@ -447,6 +447,34 @@ public class SMap extends EngineState<SMap> {
     return this.collisionGeometry_800cbe08;
   }
 
+  /**
+   * Move a runtime submap object using the same collision/floor semantics as
+   * retail scripted SOBJ movement.
+   *
+   * CollisionGeometry.checkCollision rewrites movement.y to the resolved
+   * absolute floor height, so Y must be assigned rather than accumulated.
+   */
+  public boolean moveRuntimeSobj(final SubmapObject210 sobj, final Vector3f movement) {
+    final Model124 model = sobj.model_00;
+    final int collidedPrimitiveIndex = this.collisionGeometry_800cbe08.checkCollision(
+      sobj.sobjIndex_12e != 0,
+      model.coord2_14,
+      movement,
+      false
+    );
+
+    sobj.collidedPrimitiveIndex_16c = collidedPrimitiveIndex;
+
+    if(collidedPrimitiveIndex < 0 || !this.isWalkable(collidedPrimitiveIndex)) {
+      return false;
+    }
+
+    model.coord2_14.coord.transfer.x += movement.x;
+    model.coord2_14.coord.transfer.y = movement.y;
+    model.coord2_14.coord.transfer.z += movement.z;
+    return true;
+  }
+
   @Override
   public void init() {
     lastSavableEngineState = this.type;
