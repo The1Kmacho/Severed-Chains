@@ -44,6 +44,17 @@ public abstract class Submap {
   public abstract void calcGoodScreenOffset(final float x, final float y, final Vector2f out);
 
   public abstract int getEncounterRate();
+
+  /**
+   * Returns the encounter options that belong to this loaded submap.
+   *
+   * Mods can use this to represent retail encounter tables in the field
+   * without reaching into RetailSubmap's private scene arrays.
+   */
+  public List<Encounter> getEncounterPool() {
+    return List.of();
+  }
+
   public abstract void prepareEncounter(final boolean useBattleStage);
   public abstract void prepareEncounter(final Encounter encounter, final boolean useBattleStage);
 

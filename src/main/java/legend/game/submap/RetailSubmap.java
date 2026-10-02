@@ -28,6 +28,7 @@ import legend.game.modding.events.submap.SubmapEncounterRateEvent;
 import legend.game.modding.events.submap.SubmapEnvironmentTextureEvent;
 import legend.game.modding.events.submap.SubmapObjectTextureEvent;
 import legend.game.modding.events.submap.SubmapObjectAssetsEvent;
+import legend.game.modding.events.submap.SubmapRuntimeObjectsEvent;
 import legend.game.scripting.ScriptFile;
 import legend.game.sound.SoundFile;
 import legend.game.sound.SoundFileIndices;
@@ -519,6 +520,29 @@ public class RetailSubmap extends Submap {
   }
 
   @Override
+  public List<Encounter> getEncounterPool() {
+    final int sceneId = encounterData_800f64c4[this.cut].scene_00;
+    final int[] scene = sceneEncounterIds_800f74c4[sceneId];
+    final List<Encounter> encounters = new ArrayList<>(scene.length);
+
+    for(final int encounterId : scene) {
+      if(encounterId < 0 || encounterId >= LodEncounters.LEGACY.length) {
+        continue;
+      }
+
+      final var entry = REGISTRIES.encounters.getEntry(LodMod.MOD_ID, LodEncounters.LEGACY[encounterId]);
+      if(entry.isValid()) {
+        final Encounter encounter = entry.get();
+        if(!encounters.contains(encounter)) {
+          encounters.add(encounter);
+        }
+      }
+    }
+
+    return encounters;
+  }
+
+  @Override
   public void prepareEncounter(final Encounter encounter, final boolean useBattleStage) {
     final int sceneId = encounterData_800f64c4[this.cut].scene_00;
     final int[] scene = sceneEncounterIds_800f74c4[sceneId];
@@ -618,6 +642,39 @@ public class RetailSubmap extends Submap {
       }
     }
 
+    // Load normal texture replacements first, then let mods append complete
+    // runtime SOBJ assets before UV allocation. This keeps runtime objects on
+    // the same rendering path as retail field objects instead of requiring a
+    // second ad-hoc renderer.
+    this.loadTextureOverrides();
+
+    final SubmapRuntimeObjectsEvent runtimeObjectsEvent = EVENTS.postEvent(
+      new SubmapRuntimeObjectsEvent(
+        this.smap,
+        gameState_800babc8,
+        this,
+        drgnBinIndex_800bc058,
+        this.cut,
+        this.objects.size(),
+        20
+      )
+    );
+
+    for(final SubmapRuntimeObjectsEvent.Entry entry : runtimeObjectsEvent.entries) {
+      if(this.objects.size() >= 20) {
+        LOGGER.warn("Ignoring runtime submap object because the retail SOBJ limit of 20 has been reached");
+        break;
+      }
+
+      final int objectIndex = this.objects.size();
+      this.objects.add(entry.object());
+      this.pxls.add(entry.texture());
+
+      if(entry.textureOverride() != null) {
+        this.sobjTextureOverrides.put(objectIndex, entry.textureOverride());
+      }
+    }
+
     for(int i = 0; i < this.objects.size(); i++) {
       final SubmapObject object = this.objects.get(i);
       final Tim texture = i < this.pxls.size() ? this.pxls.get(i) : null;
@@ -634,7 +691,6 @@ public class RetailSubmap extends Submap {
       object.geometryScale = event.geometryScale;
     }
 
-    this.loadTextureOverrides();
     this.calculateTextureLocations();
     this.loadTextures();
   }
@@ -684,6 +740,11 @@ public class RetailSubmap extends Submap {
 
     outer:
     for(int pxlIndex = 0; pxlIndex < this.pxls.size(); pxlIndex++) {
+      if(this.sobjTextureOverrides.containsKey(pxlIndex)) {
+        this.uvAdjustments.add(UvAdjustmentMetrics14.PNG);
+        continue;
+      }
+
       // sobj 16 uses the submap overlay texture
       if(pxlIndex == 16) {
         this.uvAdjustments.add(new UvAdjustmentMetrics14(pxlIndex + 1, 1008, 256));
@@ -715,12 +776,7 @@ public class RetailSubmap extends Submap {
             final int x = 576 + slotIndex % 12 * 16;
             final int y = 256 + slotIndex / 12 * 128;
 
-            if(this.sobjTextureOverrides.containsKey(pxlIndex)) {
-              this.uvAdjustments.add(UvAdjustmentMetrics14.PNG);
-            } else {
-              this.uvAdjustments.add(new UvAdjustmentMetrics14(pxlIndex + 1, x, y));
-            }
-
+            this.uvAdjustments.add(new UvAdjustmentMetrics14(pxlIndex + 1, x, y));
             continue outer;
           }
         }
