@@ -66,7 +66,7 @@ public final class VisibleEncountersMod {
   private static boolean visibleEncountersEnabled;
   private static final Set<Integer> CONSUMED_SLOTS = new HashSet<>();
 
-  private VisibleEncountersMod() { }
+  public VisibleEncountersMod() { }
 
   @EventListener
   public static void encounterRate(final SubmapEncounterRateEvent event) {
