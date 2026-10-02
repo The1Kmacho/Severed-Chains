@@ -171,7 +171,7 @@ public final class VisibleEncountersMod {
     }
 
     final TmdAnimationFile idle = firstAnimation(base, 0);
-    final TmdAnimationFile chase = firstAnimation(attacks, 0);
+    final TmdAnimationFile chase = locomotionAnimation(attacks);
 
     if(idle == null || chase == null) {
       LOGGER.warn("[Visible Encounters] Monster %d is missing idle/chase animation data", monsterId);
@@ -191,6 +191,39 @@ public final class VisibleEncountersMod {
     );
 
     return new RuntimeMonsterAssets(model, idle, chase, texture);
+  }
+
+  private static TmdAnimationFile locomotionAnimation(final List<FileData> files) {
+    TmdAnimationFile best = null;
+    float bestScore = -1.0f;
+    final int limit = java.lang.Math.min(32, files.size());
+
+    for(int i = 0; i < limit; i++) {
+      final TmdAnimationFile animation = parseAnimation(files.get(i));
+      if(animation == null || animation.partTransforms_10.length < 2 || animation.modelPartCount_0c == 0) {
+        continue;
+      }
+
+      // Enemy attack archives are not semantically named. Prefer the animation
+      // with the strongest root X/Z travel; in practice this selects the
+      // charge/run/lunge animation far more reliably than assuming slot 0.
+      final Vector3f start = animation.partTransforms_10[0][0].translate_06;
+      float score = 0.0f;
+
+      for(int frame = 1; frame < animation.partTransforms_10.length; frame++) {
+        final Vector3f root = animation.partTransforms_10[frame][0].translate_06;
+        final float dx = root.x - start.x;
+        final float dz = root.z - start.z;
+        score = java.lang.Math.max(score, dx * dx + dz * dz);
+      }
+
+      if(score > bestScore) {
+        bestScore = score;
+        best = animation;
+      }
+    }
+
+    return best != null ? best : firstAnimation(files, 0);
   }
 
   private static TmdAnimationFile firstAnimation(final List<FileData> files, final int preferredIndex) {
@@ -416,7 +449,7 @@ public final class VisibleEncountersMod {
 
       collision.getMiddleOfCollisionPrimitive(fallbackPrimitive, this.spawnCandidate);
       this.model_00.coord2_14.coord.transfer.set(this.spawnCandidate);
-      this.model_00.coord2_14.transforms.scale.set(FIELD_MODEL_SCALE);
+      this.model_00.coord2_14.transforms.scale.set(FIELD_MODEL_SCALE, FIELD_MODEL_SCALE, FIELD_MODEL_SCALE);
       this.home.set(this.spawnCandidate);
       this.collidedPrimitiveIndex_16c = fallbackPrimitive;
       this.hidden_128 = false;
