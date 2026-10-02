@@ -231,6 +231,8 @@ public class BattleHud {
   private String effectNotification;
   private TextColour effectNotificationColour = TextColour.GOLD;
   private int effectNotificationStartTick = Integer.MIN_VALUE;
+  private MonsterBattleEntity breakFlashTarget;
+  private int breakFlashStartTick = Integer.MIN_VALUE;
 
   public Texture battleIconsTexture;
   public Obj battleIconQuad;
@@ -825,32 +827,6 @@ public class BattleHud {
           element = targetBent.getElement();
           targetEffectBent = targetBent;
 
-          //LAB_800f0e60
-          final int status = targetBent.status_0e;
-
-          if((status & 0xff) != 0) {
-            if((tickCount_800bb0fc & 0x10) != 0) {
-              int mask = 0x80;
-
-              //LAB_800f0e94
-              int statusBit;
-              for(statusBit = 0; statusBit < 8; statusBit++) {
-                if((status & mask) != 0) {
-                  break;
-                }
-
-                mask >>= 1;
-              }
-
-              //LAB_800f0eb4
-              if(statusBit == 8) {
-                statusBit = 7;
-              }
-
-              //LAB_800f0ec0
-              str = ailments_800fb3a0[statusBit];
-            }
-          }
         }
 
         //LAB_800f0ed8
@@ -867,8 +843,55 @@ public class BattleHud {
       }
     }
 
+    this.renderBreakFlash();
     this.renderEffectNotification();
     //LAB_800f0f2c
+  }
+
+  public void showBreakFlash(final MonsterBattleEntity target) {
+    this.breakFlashTarget = target;
+    this.breakFlashStartTick = tickCount_800bb0fc;
+  }
+
+  private void renderBreakFlash() {
+    if(this.breakFlashTarget == null) {
+      return;
+    }
+
+    final int age = tickCount_800bb0fc - this.breakFlashStartTick;
+    if(age < 0 || age >= 18) {
+      this.breakFlashTarget = null;
+      this.breakFlashStartTick = Integer.MIN_VALUE;
+      return;
+    }
+
+    final float x = -this.breakFlashTarget.targetArrowPos_78.z * 100.0f;
+    final float y = -this.breakFlashTarget.targetArrowPos_78.y * 100.0f;
+    final float z = -this.breakFlashTarget.targetArrowPos_78.x * 100.0f;
+    final Vector2f screen = new Vector2f();
+    Transformations.toScreenspace(
+      new Vector3f(x, y, z),
+      this.breakFlashTarget.model_148.coord2_14,
+      screen
+    );
+
+    final int size = 8 + age / 2;
+    final int brightness = java.lang.Math.max(0, 255 - age * 13);
+    final int cx = java.lang.Math.round(screen.x);
+    final int cy = java.lang.Math.round(screen.y);
+
+    this.drawLine(cx - size, cy - size, cx + size, cy - size, brightness, brightness * 7 / 8, brightness / 4, true);
+    this.drawLine(cx - size, cy + size, cx + size, cy + size, brightness, brightness * 7 / 8, brightness / 4, true);
+    this.drawLine(cx - size, cy - size, cx - size, cy + size, brightness, brightness * 7 / 8, brightness / 4, true);
+    this.drawLine(cx + size, cy - size, cx + size, cy + size, brightness, brightness * 7 / 8, brightness / 4, true);
+
+    if(age < 6) {
+      final int inner = java.lang.Math.max(3, size - 4);
+      this.drawLine(cx - inner, cy - inner, cx + inner, cy - inner, 255, 255, 255, true);
+      this.drawLine(cx - inner, cy + inner, cx + inner, cy + inner, 255, 255, 255, true);
+      this.drawLine(cx - inner, cy - inner, cx - inner, cy + inner, 255, 255, 255, true);
+      this.drawLine(cx + inner, cy - inner, cx + inner, cy + inner, 255, 255, 255, true);
+    }
   }
 
   public void showEffectNotification(final String text) {
@@ -934,8 +957,38 @@ public class BattleHud {
       return;
     }
 
-    this.effectFont.horizontalAlign(align);
-    renderText(String.join(" ", event.effects), x, y, this.effectFont);
+    final List<BattleEffectIcon> icons = new ArrayList<>();
+    final List<String> tacticalText = new ArrayList<>();
+
+    for(final String effect : event.effects) {
+      final BattleEffectIcon icon = this.parseBattleEffectIcon(effect);
+      if(icon != null) {
+        if(icons.size() < 6) {
+          icons.add(icon);
+        }
+      } else {
+        tacticalText.add(effect);
+      }
+    }
+
+    if(!icons.isEmpty()) {
+      this.battleMenu_800c6c34.initIconObjs();
+      final float startX = x - icons.size() * 4.0f;
+
+      for(int i = 0; i < icons.size(); i++) {
+        this.renderBattleEffectIcon(icons.get(i), startX + i * 8.0f, y - 4.0f);
+      }
+    }
+
+    if(!tacticalText.isEmpty()) {
+      this.effectFont.horizontalAlign(align);
+      renderText(
+        String.join(" ", tacticalText),
+        x,
+        y + (icons.isEmpty() ? 0 : 10),
+        this.effectFont
+      );
+    }
   }
 
   private record BattleEffectIcon(int iconId, int turns, boolean negative) { }
@@ -951,7 +1004,6 @@ public class BattleHud {
     }
 
     this.battleMenu_800c6c34.initIconObjs();
-    final BattleMenuStruct58 menu = this.battleMenu_800c6c34;
     int iconIndex = 0;
 
     for(final String effect : event.effects) {
@@ -969,25 +1021,33 @@ public class BattleHud {
       final float x = portraitLeft + column * 8.0f;
       final float y = portraitBottom - 8.0f - row * 8.0f;
 
-      menu.transforms.identity();
-      menu.transforms.transfer.set(x, y, 123.5f);
-      menu.transforms.scaling(0.5f, 0.5f, 1.0f);
-
-      final QueuedModelStandard model = RENDERER.queueOrthoModel(menu.menuObj, menu.transforms, QueuedModelStandard.class)
-        .vertices(menu.actionIconObjOffset + icon.iconId * 12, 4)
-        .translucency(Translucency.of(BattleMenuStruct58.battleMenuIconMetrics_800fb674[icon.iconId].translucencyMode_06));
-
-      if(icon.negative) {
-        model.colour(1.0f, 0.55f, 0.55f);
-      } else {
-        model.colour(0.75f, 1.0f, 1.0f);
-      }
-
-      if(icon.turns > 0) {
-        renderText(Integer.toString(icon.turns), x + 6.5f, y + 5.5f, this.effectIconFont);
-      }
-
+      this.renderBattleEffectIcon(icon, x, y);
       iconIndex++;
+    }
+  }
+
+  private void renderBattleEffectIcon(
+    final BattleEffectIcon icon,
+    final float x,
+    final float y
+  ) {
+    final BattleMenuStruct58 menu = this.battleMenu_800c6c34;
+    menu.transforms.identity();
+    menu.transforms.transfer.set(x, y, 123.5f);
+    menu.transforms.scaling(0.5f, 0.5f, 1.0f);
+
+    final QueuedModelStandard model = RENDERER.queueOrthoModel(menu.menuObj, menu.transforms, QueuedModelStandard.class)
+      .vertices(menu.actionIconObjOffset + icon.iconId * 12, 4)
+      .translucency(Translucency.of(BattleMenuStruct58.battleMenuIconMetrics_800fb674[icon.iconId].translucencyMode_06));
+
+    if(icon.negative) {
+      model.colour(1.0f, 0.55f, 0.55f);
+    } else {
+      model.colour(0.75f, 1.0f, 1.0f);
+    }
+
+    if(icon.turns > 0) {
+      renderText(Integer.toString(icon.turns), x + 6.5f, y + 5.5f, this.effectIconFont);
     }
   }
 

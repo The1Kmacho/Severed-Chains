@@ -69,7 +69,7 @@ public final class VisibleEncountersMod {
   // Battle models use much larger world units than retail field SOBJs.
   // 1/16 matches the tested field scale; keep this unchanged.
   private static final float FIELD_MODEL_SCALE = 0.0625f;
-  private static final float PATROL_SPEED = 0.75f;
+  private static final float PATROL_SPEED = 1.35f;
   private static final float PATROL_RADIUS = 180.0f;
   private static final float INITIAL_PLAYER_SPEED_CAP = 2.0f;
   private static final float MAX_REASONABLE_PLAYER_SPEED = 10.0f;
@@ -1067,7 +1067,8 @@ public final class VisibleEncountersMod {
       }
 
       this.state = State.ENGAGED;
-      this.hidden_128 = true;
+      // Keep the encounter actor visible during the retail battle transition.
+      // Hiding it immediately makes it visibly pop out before the screen fades.
       this.showAlertIndicator_194 = false;
       this.alertTicks = 0;
       CONSUMED_SLOTS.add(this.slot);
@@ -1087,6 +1088,12 @@ public final class VisibleEncountersMod {
 
       this.usingChaseAnimation = chase;
       loadModelStandardAnimation(this.model_00, animation);
+
+      // Battle idle loops are authored for battle pacing and look too rapid on
+      // the field. Slow only the idle loop; locomotion stays at native timing.
+      if(!chase) {
+        this.model_00.interpolationScale = animation.interpolationScale * 2.0f;
+      }
     }
   }
 }

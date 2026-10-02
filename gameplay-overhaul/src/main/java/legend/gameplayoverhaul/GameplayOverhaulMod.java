@@ -221,7 +221,6 @@ public final class GameplayOverhaulMod {
 
     if(event.attackType != AttackType.PHYSICAL) {
       cancelParryCuesForAttacker(attacker);
-      event.battle.hud.showEffectNotification("SPECIAL - NO PARRY", TextColour.PURPLE);
       return;
     }
 
@@ -1199,6 +1198,8 @@ public final class GameplayOverhaulMod {
     setDefense(monster, "break_defense_down", -20, 2);
 
     if(currentEngineState_8004dd04 instanceof final Battle battle) {
+      battle.hud.showBreakFlash(monster);
+
       if(additionPipeline) {
         battle.queueAdditionCompletionReward("+BREAK", waitForRetailSpSummary);
       } else {
