@@ -261,6 +261,27 @@ tasks.register('fieldBattleModelsJar', Jar) {
   from layout.buildDirectory.dir('classes/java/fieldBattleModels')
 }
 
+// Visible field encounters are packaged as a standalone gameplay mod. Core
+// changes for this feature are limited to generic runtime-submap-object hooks.
+tasks.register('compileVisibleEncounters', JavaCompile) {
+  dependsOn tasks.named('classes')
+  source = fileTree('visible-encounters/src/main/java') {
+    include '**/*.java'
+  }
+  classpath = sourceSets.main.output + configurations.compileClasspath
+  destinationDirectory = layout.buildDirectory.dir('classes/java/visibleEncounters')
+  sourceCompatibility = JavaVersion.VERSION_25
+  targetCompatibility = JavaVersion.VERSION_25
+  options.encoding = 'UTF-8'
+}
+
+tasks.register('visibleEncountersJar', Jar) {
+  dependsOn tasks.named('compileVisibleEncounters')
+  archiveFileName = 'visible-encounters.jar'
+  destinationDirectory = layout.buildDirectory.dir('libs/mods')
+  from layout.buildDirectory.dir('classes/java/visibleEncounters')
+}
+
 tasks.register('clearOutput', Delete) {
   delete layout.buildDirectory.dir("libs/libs")
   delete layout.buildDirectory.file("libs/**")
@@ -342,7 +363,7 @@ tasks.register('copySupportFiles', Copy) {
 }
 
 jar.dependsOn(clearOutput, copyLibs, copySupportFiles, updaterJar, copyUpdaterConfig)
-jar.finalizedBy tasks.named('copyVisualRemasterAssets'), tasks.named('gameplayOverhaulJar'), tasks.named('fieldBattleModelsJar')
+jar.finalizedBy tasks.named('copyVisualRemasterAssets'), tasks.named('gameplayOverhaulJar'), tasks.named('fieldBattleModelsJar'), tasks.named('visibleEncountersJar')
 
 publishing {
   publications {
