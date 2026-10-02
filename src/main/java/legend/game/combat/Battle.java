@@ -9149,10 +9149,12 @@ public class Battle extends EngineState<Battle> {
       return;
     }
 
-    // This movement helper is shared by normal melee and some scripted
-    // actions. If an item is already active, this is not a counterable melee
-    // approach and must not create a provisional physical parry cue.
-    if(attacker.item_d4 != null) {
+    // This movement helper is shared by normal melee and scripted
+    // item/spell/status actions. Only create the early counter cue when the
+    // enemy has not already declared a non-physical action. Non-physical hit
+    // checks still post their own explicit cue event later for warning text,
+    // but they must never flash a provisional parry square first.
+    if(attacker.item_d4 != null || attacker.spell_94 != null) {
       return;
     }
 
