@@ -64,7 +64,7 @@ public final class GameplayOverhaulMod {
 
   private static final Logger LOGGER = LogManager.getFormatterLogger(GameplayOverhaulMod.class);
 
-  private static final int PARRY_WINDOW_TICKS = 2;
+  private static final int PARRY_WINDOW_TICKS = 4;
   private static final int DEFAULT_PARRY_CUE_TICKS = 18;
   private static final int GUARD_ANIMATION_INDEX = 5;
   private static final int PARRY_GUARD_EFFECT_TICKS = 12;
@@ -315,7 +315,6 @@ public final class GameplayOverhaulMod {
       new RegistryId(MOD_ID, "guard_magic_defense"),
       LodMod.UNARY_STAT_MOD_TYPE.get().make(new UnaryStatModConfig().percent(25).turns(selfEffectTurns(1)))
     );
-    event.battle.hud.showEffectNotification("GUARD+ DEF / STATUS", TextColour.CYAN);
   }
 
   @EventListener
