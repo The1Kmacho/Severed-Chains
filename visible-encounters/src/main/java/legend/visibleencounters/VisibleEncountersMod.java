@@ -54,19 +54,27 @@ public final class VisibleEncountersMod {
 
   private static final Logger LOGGER = LogManager.getFormatterLogger(VisibleEncountersMod.class);
 
-  private static final int DESIRED_ACTORS_PER_MAP = 2;
+  private static final int MAX_ACTORS_PER_MAP = 5;
   private static final int SPAWN_GRACE_TICKS = 60;
   private static final int ALERT_TICKS = 60;
   private static final int SIGHT_RECHECK_TICKS = 6;
   private static final int PATH_RECHECK_TICKS = 10;
+  private static final int PATROL_MOVE_TICKS_MIN = 18;
+  private static final int PATROL_MOVE_TICKS_RANGE = 18;
+  private static final int PATROL_IDLE_TICKS_MIN = 120;
+  private static final int PATROL_IDLE_TICKS_RANGE = 120;
   private static final float LINE_OF_SIGHT_SAMPLE_STEP = 16.0f;
+  private static final float WALKABLE_AREA_PER_ACTOR = 350_000.0f;
 
   // Battle models use much larger world units than retail field SOBJs.
   // 1/16 matches the tested field scale; keep this unchanged.
   private static final float FIELD_MODEL_SCALE = 0.0625f;
-  private static final float PATROL_SPEED = 3.0f;
-  private static final float INITIAL_PLAYER_SPEED_CAP = 3.0f;
-  private static final float MAX_REASONABLE_PLAYER_SPEED = 12.0f;
+  private static final float PATROL_SPEED = 0.75f;
+  private static final float PATROL_RADIUS = 180.0f;
+  private static final float INITIAL_PLAYER_SPEED_CAP = 2.0f;
+  private static final float MAX_REASONABLE_PLAYER_SPEED = 10.0f;
+  private static final float CHASE_SPEED_FRACTION = 0.70f;
+  private static final float CHASE_SPEED_MAX = 2.5f;
   private static final float SIGHT_DISTANCE = 700.0f;
   private static final float CLOSE_DETECTION_DISTANCE = 170.0f;
   private static final float LOSE_DISTANCE = 980.0f;
@@ -129,9 +137,9 @@ public final class VisibleEncountersMod {
     }
 
     int added = 0;
-    final int actorCount = java.lang.Math.min(
-      DESIRED_ACTORS_PER_MAP,
-      java.lang.Math.min(event.remainingCapacity(), pool.size() == 1 ? DESIRED_ACTORS_PER_MAP : pool.size())
+    final int actorCount = desiredActorCount(
+      event.getEngineState().getCollisionGeometry(),
+      event.remainingCapacity()
     );
 
     for(int slot = 0; slot < actorCount; slot++) {
@@ -183,9 +191,10 @@ public final class VisibleEncountersMod {
 
     if(visibleEncountersEnabled) {
       LOGGER.info(
-        "[Visible Encounters] Cut %d: %d active actor(s), %d consumed",
+        "[Visible Encounters] Cut %d: %d/%d active actor(s), %d consumed",
         event.submapCut,
         added,
+        actorCount,
         CONSUMED_SLOTS.size()
       );
     }
@@ -355,6 +364,59 @@ public final class VisibleEncountersMod {
     };
   }
 
+  private static int desiredActorCount(
+    final CollisionGeometry collision,
+    final int remainingCapacity
+  ) {
+    if(remainingCapacity <= 0) {
+      return 0;
+    }
+
+    if(collision == null
+      || collision.primitiveInfo_14 == null
+      || collision.primitiveCount_0c <= 0) {
+      return 1;
+    }
+
+    float walkableArea = 0.0f;
+
+    for(int primitive = 0; primitive < collision.primitiveCount_0c; primitive++) {
+      if(!isNavigablePrimitive(collision, primitive)) {
+        continue;
+      }
+
+      final int[] indices = collisionPrimitiveVertexIndices(collision, primitive);
+      if(indices.length < 3) {
+        continue;
+      }
+
+      double twiceArea = 0.0;
+      for(int i = 0; i < indices.length; i++) {
+        final Vector3f a = collision.verts_04[indices[i]];
+        final Vector3f b = collision.verts_04[indices[(i + 1) % indices.length]];
+        twiceArea += (double)a.x * b.z - (double)b.x * a.z;
+      }
+
+      walkableArea += (float)(java.lang.Math.abs(twiceArea) * 0.5);
+    }
+
+    final int byArea = java.lang.Math.max(
+      1,
+      (int)java.lang.Math.ceil(walkableArea / WALKABLE_AREA_PER_ACTOR)
+    );
+    final int count = java.lang.Math.min(
+      MAX_ACTORS_PER_MAP,
+      java.lang.Math.min(remainingCapacity, byArea)
+    );
+
+    LOGGER.info(
+      "[Visible Encounters] Walkable field area %.0f -> %d actor(s)",
+      walkableArea,
+      count
+    );
+    return count;
+  }
+
   private static void samplePlayerSpeed(final Vector3f playerPosition) {
     if(hasPlayerPositionSample) {
       final float dx = playerPosition.x - lastPlayerPosition.x;
@@ -365,7 +427,8 @@ public final class VisibleEncountersMod {
       // actors Dart's actual field-speed ceiling instead of hard-coding a
       // faster chase speed.
       if(speed > 0.05f && speed <= MAX_REASONABLE_PLAYER_SPEED) {
-        observedPlayerMaxSpeed = java.lang.Math.max(observedPlayerMaxSpeed, speed);
+        observedPlayerMaxSpeed =
+          observedPlayerMaxSpeed * 0.90f + speed * 0.10f;
       }
     }
 
@@ -374,7 +437,10 @@ public final class VisibleEncountersMod {
   }
 
   private static float chaseSpeed() {
-    return observedPlayerMaxSpeed;
+    return java.lang.Math.min(
+      CHASE_SPEED_MAX,
+      java.lang.Math.max(1.0f, observedPlayerMaxSpeed * CHASE_SPEED_FRACTION)
+    );
   }
 
   private static boolean isNavigablePrimitive(
@@ -660,7 +726,8 @@ public final class VisibleEncountersMod {
     private int alertTicks;
     private int sightRecheckTicks;
     private int pathRecheckTicks;
-    private int patrolTicks;
+    private int patrolMoveTicks;
+    private int patrolIdleTicks = PATROL_IDLE_TICKS_MIN / 2;
     private int patrolLeg;
     private List<Integer> chasePath = List.of();
     private int chasePathIndex;
@@ -748,7 +815,8 @@ public final class VisibleEncountersMod {
           this.state = State.PATROL;
           this.showAlertIndicator_194 = false;
           this.alertTicks = 0;
-          this.patrolTicks = 0;
+          this.patrolMoveTicks = 0;
+          this.patrolIdleTicks = PATROL_IDLE_TICKS_MIN;
           this.chasePath = List.of();
           this.chasePathIndex = 0;
           this.useAnimation(this.idleAnimation, false);
@@ -923,22 +991,50 @@ public final class VisibleEncountersMod {
     }
 
     private void tickPatrol(final SMap smap) {
-      if(this.patrolTicks <= 0) {
-        this.patrolLeg++;
-        this.patrolTicks = 45 + this.slot * 12;
+      if(this.patrolIdleTicks > 0) {
+        this.patrolIdleTicks--;
+        this.movement.zero();
+        this.useAnimation(this.idleAnimation, false);
+        return;
       }
 
-      this.patrolTicks--;
+      if(this.patrolMoveTicks <= 0) {
+        this.patrolLeg++;
+        this.patrolMoveTicks =
+          PATROL_MOVE_TICKS_MIN
+            + java.lang.Math.floorMod(
+              this.slot * 11 + this.patrolLeg * 7,
+              PATROL_MOVE_TICKS_RANGE
+            );
+      }
 
-      final float angle = (this.slot + 1) * 1.6180339f + this.patrolLeg * 1.137f;
-      this.movement.set(MathHelper.sin(angle), 0.0f, MathHelper.cos(angle));
+      final float homeDx = this.home.x - this.getPosition().x;
+      final float homeDz = this.home.z - this.getPosition().z;
+      final float homeDistanceSq = homeDx * homeDx + homeDz * homeDz;
+
+      if(homeDistanceSq > PATROL_RADIUS * PATROL_RADIUS) {
+        this.movement.set(homeDx, 0.0f, homeDz);
+      } else {
+        final float angle =
+          (this.slot + 1) * 1.6180339f + this.patrolLeg * 1.137f;
+        this.movement.set(MathHelper.sin(angle), 0.0f, MathHelper.cos(angle));
+      }
+
       this.moveTowards(smap, this.movement, PATROL_SPEED);
+      this.patrolMoveTicks--;
 
-      // Patrol uses the same locomotion animation as chase, but at lower speed.
-      // When movement is blocked, fall back to idle until the next patrol leg.
       if(this.movement.x == 0.0f && this.movement.z == 0.0f) {
+        this.patrolMoveTicks = 0;
+      }
+
+      if(this.patrolMoveTicks <= 0) {
+        this.patrolIdleTicks =
+          PATROL_IDLE_TICKS_MIN
+            + java.lang.Math.floorMod(
+              this.slot * 29 + this.patrolLeg * 41,
+              PATROL_IDLE_TICKS_RANGE
+            );
         this.useAnimation(this.idleAnimation, false);
-        this.patrolTicks = 0;
       } else {
         this.useAnimation(this.chaseAnimation, true);
       }
