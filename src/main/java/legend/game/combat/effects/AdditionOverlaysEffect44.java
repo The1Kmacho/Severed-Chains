@@ -22,14 +22,17 @@ import legend.core.renderer.Translucency;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.joml.Math;
+import org.joml.Vector3f;
 
 import java.util.Arrays;
 
 import static legend.core.GameEngine.CONFIG;
+import static legend.core.GameEngine.GTE;
 import static legend.core.GameEngine.GPU;
 import static legend.core.GameEngine.PLATFORM;
 import static legend.core.GameEngine.RENDERER;
 import static legend.core.GameEngine.SCRIPTS;
+import static legend.game.Graphics.worldToScreenMatrix_800c3548;
 import static legend.game.Scus94491BpeSegment.battlePreloadedEntities_1f8003f4;
 import static legend.game.Text.renderText;
 import static legend.game.combat.SEffe.additionBorderColours_800fb7f0;
@@ -80,6 +83,10 @@ public class AdditionOverlaysEffect44 implements Effect<EffectManagerParams.Void
   private int visualOnlyWindowStart;
   private int visualOnlyImpactFrame;
   private int visualOnlyCompletionFrames;
+  private BattleEntity27c visualOnlyAnchor;
+  private final Vector3f visualOnlyAnchorTemp = new Vector3f();
+  private float visualOnlyRenderX;
+  private float visualOnlyRenderY;
 
   @Method(0x801062a8L)
   public AdditionOverlaysEffect44(final int attackerScriptIndex, final int targetScriptIndex, final int autoCompleteType) {
@@ -279,6 +286,41 @@ public class AdditionOverlaysEffect44 implements Effect<EffectManagerParams.Void
     }
   }
 
+  public void setVisualOnlyAnchor(final BattleEntity27c anchor) {
+    this.visualOnlyAnchor = anchor;
+  }
+
+  private void updateVisualOnlyRenderPosition() {
+    this.visualOnlyRenderX = GPU.getOffsetX();
+    this.visualOnlyRenderY = GPU.getOffsetY() + 30.0f;
+
+    if(this.visualOnlyAnchor == null) {
+      return;
+    }
+
+    this.visualOnlyAnchorTemp
+      .set(this.visualOnlyAnchor.getPosition())
+      .add(0.0f, -this.visualOnlyAnchor.middleOffsetY_86 * 50.0f, 0.0f)
+      .mul(worldToScreenMatrix_800c3548)
+      .add(worldToScreenMatrix_800c3548.transfer);
+
+    if(this.visualOnlyAnchorTemp.z <= 1.0f) {
+      return;
+    }
+
+    final float perspective = GTE.getProjectionPlaneDistance() / this.visualOnlyAnchorTemp.z;
+    this.visualOnlyRenderX += perspective * this.visualOnlyAnchorTemp.x + GTE.getScreenOffsetX();
+    this.visualOnlyRenderY += perspective * this.visualOnlyAnchorTemp.y + GTE.getScreenOffsetY();
+  }
+
+  private float overlayCenterX() {
+    return this.visualOnlyCounter ? this.visualOnlyRenderX : GPU.getOffsetX();
+  }
+
+  private float overlayCenterY() {
+    return this.visualOnlyCounter ? this.visualOnlyRenderY : GPU.getOffsetY() + 30.0f;
+  }
+
   private static Obj createReticleBorderShadow() {
     return new QuadBuilder("Reticle background")
       .translucency(Translucency.B_MINUS_F)
@@ -427,7 +469,7 @@ public class AdditionOverlaysEffect44 implements Effect<EffectManagerParams.Void
         final float squareSize = targetBorderArray[16].size_08 - targetBorderNum * 8 * scale;
 
         effect.transforms.scaling(squareSize, squareSize, 1.0f);
-        effect.transforms.transfer.set(GPU.getOffsetX(), GPU.getOffsetY() + 30.0f, 120.0f);
+        effect.transforms.transfer.set(effect.overlayCenterX(), effect.overlayCenterY(), 120.0f);
         final QueuedModelStandard model = RENDERER.queueOrthoModel(RENDERER.centredQuadBPlusF, effect.transforms, QueuedModelStandard.class);
 
         if(completionState == 1) {  // Success
@@ -460,7 +502,7 @@ public class AdditionOverlaysEffect44 implements Effect<EffectManagerParams.Void
     final float y0 = sin0 * offset / 2.0f;
     final int colour = hitOverlay.shadowColour_08 * 4;
 
-    this.transforms.transfer.set(x0 + GPU.getOffsetX(), y0 + GPU.getOffsetY() + 30.0f, 124.0f);
+    this.transforms.transfer.set(x0 + this.overlayCenterX(), y0 + this.overlayCenterY(), 124.0f);
     this.transforms
       .scaling(10.0f, borderSize, 1.0f)
       .rotateLocalZ(angle);
@@ -485,7 +527,7 @@ public class AdditionOverlaysEffect44 implements Effect<EffectManagerParams.Void
 
         // There can be multiple reticles drawn to the screen at once. We want the current hit to be drawn on top
         // of the next hit, so push the reticles away from the camera by a small margin based on hitNum
-        this.transforms.transfer.set(GPU.getOffsetX(), GPU.getOffsetY() + 30.0f, 120.0f + hitNum * 0.1f);
+        this.transforms.transfer.set(this.overlayCenterX(), this.overlayCenterY(), 120.0f + hitNum * 0.1f);
 
         final QueuedModelStandard model;
 
@@ -765,6 +807,8 @@ public class AdditionOverlaysEffect44 implements Effect<EffectManagerParams.Void
     final EffectManagerData6c<EffectManagerParams.VoidType> manager = state.innerStruct_00;
 
     if(this.visualOnlyCounter) {
+      this.updateVisualOnlyRenderPosition();
+
       if(manager.params_10.flags_00 >= 0) {
         final AdditionOverlaysHit20 hitOverlay = this.hitOverlays_40[0];
 
