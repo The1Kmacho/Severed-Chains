@@ -1,5 +1,6 @@
 package legend.visibleencounters;
 
+import legend.core.IoHelper;
 import legend.core.MathHelper;
 import legend.core.gpu.Rect4i;
 import legend.core.gpu.VramTextureLoader;
@@ -10,6 +11,7 @@ import legend.core.renderer.TextureDataType;
 import legend.core.renderer.TextureInternalFormat;
 import legend.game.EngineStates;
 import legend.game.combat.encounters.Encounter;
+import legend.game.modding.events.battle.BattleStartedEvent;
 import legend.game.modding.events.submap.SubmapEncounterRateEvent;
 import legend.game.modding.events.submap.SubmapRuntimeObjectsEvent;
 import legend.game.scripting.ScriptState;
@@ -33,6 +35,9 @@ import org.joml.Vector3f;
 import org.lwjgl.BufferUtils;
 
 import java.nio.IntBuffer;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Collections;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
@@ -40,6 +45,7 @@ import java.util.function.Consumer;
 
 import static legend.game.Models.loadModelStandardAnimation;
 import static legend.game.Scus94491BpeSegment_8004.doNothingScript_8004f650;
+import static legend.game.Scus94491BpeSegment_8006.battleState_8006e398;
 
 @Mod(id = VisibleEncountersMod.MOD_ID, version = "^3.0.0")
 @EventListener
@@ -50,11 +56,17 @@ public final class VisibleEncountersMod {
 
   private static final int DESIRED_ACTORS_PER_MAP = 2;
   private static final int SPAWN_GRACE_TICKS = 60;
+  private static final int ALERT_TICKS = 60;
+  private static final int SIGHT_RECHECK_TICKS = 6;
+  private static final int PATH_RECHECK_TICKS = 10;
+  private static final float LINE_OF_SIGHT_SAMPLE_STEP = 16.0f;
+
   // Battle models use much larger world units than retail field SOBJs.
-  // 1/16 is the first-pass conversion; per-monster overrides can refine outliers.
+  // 1/16 matches the tested field scale; keep this unchanged.
   private static final float FIELD_MODEL_SCALE = 0.0625f;
-  private static final float PATROL_SPEED = 4.0f;
-  private static final float CHASE_SPEED = 8.0f;
+  private static final float PATROL_SPEED = 3.0f;
+  private static final float INITIAL_PLAYER_SPEED_CAP = 3.0f;
+  private static final float MAX_REASONABLE_PLAYER_SPEED = 12.0f;
   private static final float SIGHT_DISTANCE = 700.0f;
   private static final float CLOSE_DETECTION_DISTANCE = 170.0f;
   private static final float LOSE_DISTANCE = 980.0f;
@@ -69,7 +81,15 @@ public final class VisibleEncountersMod {
   private static int activeCut = Integer.MIN_VALUE;
   private static Object activeSubmap;
   private static boolean visibleEncountersEnabled;
+  private static boolean pendingPlayerInitiative;
   private static final Set<Integer> CONSUMED_SLOTS = new HashSet<>();
+
+  private static CollisionGeometry navGeometry;
+  private static int[][] navNeighbours;
+  private static Vector3f[] navCentres;
+  private static final Vector3f lastPlayerPosition = new Vector3f();
+  private static boolean hasPlayerPositionSample;
+  private static float observedPlayerMaxSpeed = INITIAL_PLAYER_SPEED_CAP;
 
   public VisibleEncountersMod() { }
 
@@ -93,6 +113,11 @@ public final class VisibleEncountersMod {
     activeCut = event.submapCut;
     activeSubmap = event.getSubmap();
     visibleEncountersEnabled = false;
+    navGeometry = null;
+    navNeighbours = null;
+    navCentres = null;
+    hasPlayerPositionSample = false;
+    observedPlayerMaxSpeed = INITIAL_PLAYER_SPEED_CAP;
 
     // Ask for the retail rate before enabling our rate override. This preserves
     // maps and scenes where encounters are intentionally disabled.
@@ -164,6 +189,31 @@ public final class VisibleEncountersMod {
         CONSUMED_SLOTS.size()
       );
     }
+  }
+
+  @EventListener
+  public static void battleStarted(final BattleStartedEvent event) {
+    if(!pendingPlayerInitiative) {
+      return;
+    }
+
+    pendingPlayerInitiative = false;
+
+    // Put every living player just over the retail action threshold. Because
+    // the scheduler subtracts one threshold after each action, this guarantees
+    // one opening turn for every player before normal ATB ordering resumes.
+    final int playerCount = battleState_8006e398.alivePlayerBents_eac.size();
+    for(int i = 0; i < playerCount; i++) {
+      battleState_8006e398.alivePlayerBents_eac.get(i).innerStruct_00.turnValue_4c =
+        0xd9 + playerCount - i;
+    }
+
+    for(final var monsterState : battleState_8006e398.aliveMonsterBents_ebc) {
+      monsterState.innerStruct_00.turnValue_4c =
+        java.lang.Math.min(monsterState.innerStruct_00.turnValue_4c, 0xd9);
+    }
+
+    LOGGER.info("[Visible Encounters] Player initiative: party receives the opening round");
   }
 
   private static RuntimeMonsterAssets loadMonsterAssets(final int monsterId) {
@@ -305,6 +355,280 @@ public final class VisibleEncountersMod {
     };
   }
 
+  private static void samplePlayerSpeed(final Vector3f playerPosition) {
+    if(hasPlayerPositionSample) {
+      final float dx = playerPosition.x - lastPlayerPosition.x;
+      final float dz = playerPosition.z - lastPlayerPosition.z;
+      final float speed = (float)java.lang.Math.sqrt(dx * dx + dz * dz);
+
+      // Ignore map restores/teleports. Normal movement teaches the encounter
+      // actors Dart's actual field-speed ceiling instead of hard-coding a
+      // faster chase speed.
+      if(speed > 0.05f && speed <= MAX_REASONABLE_PLAYER_SPEED) {
+        observedPlayerMaxSpeed = java.lang.Math.max(observedPlayerMaxSpeed, speed);
+      }
+    }
+
+    lastPlayerPosition.set(playerPosition);
+    hasPlayerPositionSample = true;
+  }
+
+  private static float chaseSpeed() {
+    return observedPlayerMaxSpeed;
+  }
+
+  private static boolean isNavigablePrimitive(
+    final CollisionGeometry collision,
+    final int primitive
+  ) {
+    return primitive >= 0
+      && primitive < collision.primitiveCount_0c
+      && collision.primitiveInfo_14[primitive].flatEnoughToWalkOn_01
+      && (collision.getCollisionAndTransitionInfo(primitive) & 0x38) == 0;
+  }
+
+  private static int[] collisionPrimitiveVertexIndices(
+    final CollisionGeometry collision,
+    final int primitiveIndex
+  ) {
+    final var primitiveInfo = collision.primitiveInfo_14[primitiveIndex];
+    final var primitive = collision.getPrimitiveForOffset(primitiveInfo.primitiveOffset_04);
+    final int packetOffset = primitiveInfo.primitiveOffset_04 - primitive.offset();
+    final int packetIndex = packetOffset / (primitive.width() + 4);
+    final int remainder = packetOffset % (primitive.width() + 4);
+    final byte[] packet = primitive.data()[packetIndex];
+    final int[] indices = new int[primitiveInfo.vertexCount_00];
+
+    for(int i = 0; i < indices.length; i++) {
+      indices[i] = IoHelper.readUShort(packet, remainder + 2 + i * 2);
+    }
+
+    return indices;
+  }
+
+  private static boolean shareCollisionEdge(final int[] a, final int[] b) {
+    int shared = 0;
+
+    for(final int av : a) {
+      for(final int bv : b) {
+        if(av == bv) {
+          shared++;
+          if(shared >= 2) {
+            return true;
+          }
+          break;
+        }
+      }
+    }
+
+    return false;
+  }
+
+  private static void ensureNavigation(final CollisionGeometry collision) {
+    if(navGeometry == collision
+      && navNeighbours != null
+      && navNeighbours.length == collision.primitiveCount_0c) {
+      return;
+    }
+
+    navGeometry = collision;
+    final int count = collision.primitiveCount_0c;
+    navCentres = new Vector3f[count];
+    navNeighbours = new int[count][];
+    final int[][] vertices = new int[count][];
+
+    for(int i = 0; i < count; i++) {
+      navCentres[i] = new Vector3f();
+      collision.getMiddleOfCollisionPrimitive(i, navCentres[i]);
+      vertices[i] = collisionPrimitiveVertexIndices(collision, i);
+    }
+
+    final List<List<Integer>> neighbours = new ArrayList<>(count);
+    for(int i = 0; i < count; i++) {
+      neighbours.add(new ArrayList<>());
+    }
+
+    for(int a = 0; a < count; a++) {
+      if(!isNavigablePrimitive(collision, a)) {
+        continue;
+      }
+
+      for(int b = a + 1; b < count; b++) {
+        if(!isNavigablePrimitive(collision, b)) {
+          continue;
+        }
+
+        if(shareCollisionEdge(vertices[a], vertices[b])) {
+          neighbours.get(a).add(b);
+          neighbours.get(b).add(a);
+        }
+      }
+    }
+
+    for(int i = 0; i < count; i++) {
+      navNeighbours[i] = neighbours.get(i).stream().mapToInt(Integer::intValue).toArray();
+    }
+  }
+
+  private static boolean areNavNeighbours(final int a, final int b) {
+    if(a == b) {
+      return true;
+    }
+
+    if(navNeighbours == null || a < 0 || a >= navNeighbours.length) {
+      return false;
+    }
+
+    for(final int neighbour : navNeighbours[a]) {
+      if(neighbour == b) {
+        return true;
+      }
+    }
+
+    return false;
+  }
+
+  private static boolean hasWalkableLineOfSight(
+    final CollisionGeometry collision,
+    final Vector3f from,
+    final Vector3f to
+  ) {
+    ensureNavigation(collision);
+
+    int previousPrimitive = collision.getCollisionPrimitiveAtPoint(
+      from.x,
+      from.y,
+      from.z,
+      true,
+      true
+    );
+    final int targetPrimitive = collision.getCollisionPrimitiveAtPoint(
+      to.x,
+      to.y,
+      to.z,
+      true,
+      true
+    );
+
+    if(!isNavigablePrimitive(collision, previousPrimitive)
+      || !isNavigablePrimitive(collision, targetPrimitive)) {
+      return false;
+    }
+
+    final float dx = to.x - from.x;
+    final float dy = to.y - from.y;
+    final float dz = to.z - from.z;
+    final float horizontalDistance = (float)java.lang.Math.sqrt(dx * dx + dz * dz);
+    final int steps = java.lang.Math.max(
+      1,
+      (int)java.lang.Math.ceil(horizontalDistance / LINE_OF_SIGHT_SAMPLE_STEP)
+    );
+
+    for(int i = 1; i <= steps; i++) {
+      final float t = i / (float)steps;
+      final int primitive = collision.getCollisionPrimitiveAtPoint(
+        from.x + dx * t,
+        from.y + dy * t,
+        from.z + dz * t,
+        true,
+        true
+      );
+
+      if(!isNavigablePrimitive(collision, primitive)
+        || !areNavNeighbours(previousPrimitive, primitive)) {
+        return false;
+      }
+
+      previousPrimitive = primitive;
+    }
+
+    return previousPrimitive == targetPrimitive;
+  }
+
+  private static List<Integer> findPath(
+    final CollisionGeometry collision,
+    final int start,
+    final int goal
+  ) {
+    ensureNavigation(collision);
+
+    if(!isNavigablePrimitive(collision, start)
+      || !isNavigablePrimitive(collision, goal)) {
+      return List.of();
+    }
+
+    if(start == goal) {
+      return List.of(start);
+    }
+
+    final int count = collision.primitiveCount_0c;
+    final float[] cost = new float[count];
+    final int[] previous = new int[count];
+    final boolean[] closed = new boolean[count];
+    Arrays.fill(cost, Float.POSITIVE_INFINITY);
+    Arrays.fill(previous, -1);
+    cost[start] = 0.0f;
+
+    for(int iteration = 0; iteration < count; iteration++) {
+      int current = -1;
+      float bestScore = Float.POSITIVE_INFINITY;
+
+      for(int candidate = 0; candidate < count; candidate++) {
+        if(closed[candidate] || !Float.isFinite(cost[candidate])) {
+          continue;
+        }
+
+        final float heuristic = horizontalDistance(navCentres[candidate], navCentres[goal]);
+        final float score = cost[candidate] + heuristic;
+        if(score < bestScore) {
+          bestScore = score;
+          current = candidate;
+        }
+      }
+
+      if(current < 0) {
+        break;
+      }
+
+      if(current == goal) {
+        final List<Integer> path = new ArrayList<>();
+        for(int node = goal; node >= 0; node = previous[node]) {
+          path.add(node);
+          if(node == start) {
+            break;
+          }
+        }
+
+        Collections.reverse(path);
+        return path.getFirst() == start ? path : List.of();
+      }
+
+      closed[current] = true;
+
+      for(final int neighbour : navNeighbours[current]) {
+        if(closed[neighbour]) {
+          continue;
+        }
+
+        final float nextCost =
+          cost[current] + horizontalDistance(navCentres[current], navCentres[neighbour]);
+
+        if(nextCost < cost[neighbour]) {
+          cost[neighbour] = nextCost;
+          previous[neighbour] = current;
+        }
+      }
+    }
+
+    return List.of();
+  }
+
+  private static float horizontalDistance(final Vector3f a, final Vector3f b) {
+    final float dx = b.x - a.x;
+    final float dz = b.z - a.z;
+    return (float)java.lang.Math.sqrt(dx * dx + dz * dz);
+  }
+
   private record RuntimeMonsterAssets(
     CContainer model,
     TmdAnimationFile idleAnimation,
@@ -331,9 +655,15 @@ public final class VisibleEncountersMod {
     private State state = State.PATROL;
     private boolean initialized;
     private boolean usingChaseAnimation;
+    private boolean cachedPlayerVisible;
     private int graceTicks = SPAWN_GRACE_TICKS;
+    private int alertTicks;
+    private int sightRecheckTicks;
+    private int pathRecheckTicks;
     private int patrolTicks;
     private int patrolLeg;
+    private List<Integer> chasePath = List.of();
+    private int chasePathIndex;
 
     private VisibleEncounterObject(
       final String name,
@@ -366,6 +696,7 @@ public final class VisibleEncountersMod {
       }
 
       final SubmapObject210 player = playerState.innerStruct_00;
+      samplePlayerSpeed(player.getPosition());
 
       if(!this.initialized) {
         if(!this.initializeOnField(smap, player)) {
@@ -380,32 +711,49 @@ public final class VisibleEncountersMod {
       this.toPlayer.set(player.getPosition()).sub(this.getPosition());
       final float distanceSq = this.toPlayer.x * this.toPlayer.x + this.toPlayer.z * this.toPlayer.z;
       final float distance = (float)java.lang.Math.sqrt(distanceSq);
+      final boolean contact =
+        distance <= CONTACT_DISTANCE
+          && java.lang.Math.abs(this.toPlayer.y) <= CONTACT_VERTICAL_TOLERANCE;
 
       if(this.state == State.PATROL) {
-        if(this.graceTicks == 0 && this.canSeePlayer(distance)) {
-          this.state = State.CHASE;
-          this.showAlertIndicator_194 = true;
-          this.alertIndicatorOffsetY_198 = 90;
-          this.useAnimation(this.chaseAnimation, true);
+        // Player touching an unaware enemy is the initiative case. Resolve
+        // contact before the close-range awareness check so approaching from
+        // behind can actually earn the opening round.
+        if(this.graceTicks == 0 && contact) {
+          this.engage(smap, true);
+          return;
+        }
+
+        if(this.graceTicks == 0 && this.canSeePlayer(smap, player, distance)) {
+          this.beginChase();
         } else {
           this.tickPatrol(smap);
         }
       }
 
       if(this.state == State.CHASE) {
-        if(distance <= CONTACT_DISTANCE
-          && java.lang.Math.abs(this.toPlayer.y) <= CONTACT_VERTICAL_TOLERANCE) {
-          this.engage(smap);
+        if(this.alertTicks > 0) {
+          this.alertTicks--;
+          if(this.alertTicks == 0) {
+            this.showAlertIndicator_194 = false;
+          }
+        }
+
+        if(contact) {
+          this.engage(smap, false);
           return;
         }
 
         if(distance > LOSE_DISTANCE) {
           this.state = State.PATROL;
           this.showAlertIndicator_194 = false;
+          this.alertTicks = 0;
           this.patrolTicks = 0;
+          this.chasePath = List.of();
+          this.chasePathIndex = 0;
           this.useAnimation(this.idleAnimation, false);
         } else {
-          this.moveTowards(smap, this.toPlayer, CHASE_SPEED);
+          this.tickChase(smap, player);
         }
       }
     }
@@ -470,26 +818,108 @@ public final class VisibleEncountersMod {
       return true;
     }
 
-    private boolean canSeePlayer(final float distance) {
-      if(java.lang.Math.abs(this.toPlayer.y) > SIGHT_VERTICAL_TOLERANCE) {
+    private void beginChase() {
+      this.state = State.CHASE;
+      this.showAlertIndicator_194 = true;
+      this.alertIndicatorOffsetY_198 = 90;
+      this.alertTicks = ALERT_TICKS;
+      this.pathRecheckTicks = 0;
+      this.chasePath = List.of();
+      this.chasePathIndex = 0;
+      this.useAnimation(this.chaseAnimation, true);
+    }
+
+    private boolean canSeePlayer(
+      final SMap smap,
+      final SubmapObject210 player,
+      final float distance
+    ) {
+      if(java.lang.Math.abs(this.toPlayer.y) > SIGHT_VERTICAL_TOLERANCE
+        || distance > SIGHT_DISTANCE
+        || distance <= 0.001f) {
         return false;
       }
 
+      final boolean inAwarenessCone;
       if(distance <= CLOSE_DETECTION_DISTANCE) {
-        return true;
+        inAwarenessCone = true;
+      } else {
+        final float invDistance = 1.0f / distance;
+        final float toPlayerX = this.toPlayer.x * invDistance;
+        final float toPlayerZ = this.toPlayer.z * invDistance;
+        final float yaw = this.model_00.coord2_14.transforms.rotate.y;
+        final float forwardX = -MathHelper.sin(yaw);
+        final float forwardZ = -MathHelper.cos(yaw);
+        inAwarenessCone = forwardX * toPlayerX + forwardZ * toPlayerZ >= SIGHT_COSINE;
       }
 
-      if(distance > SIGHT_DISTANCE || distance <= 0.001f) {
+      if(!inAwarenessCone) {
         return false;
       }
 
-      final float invDistance = 1.0f / distance;
-      final float toPlayerX = this.toPlayer.x * invDistance;
-      final float toPlayerZ = this.toPlayer.z * invDistance;
-      final float yaw = this.model_00.coord2_14.transforms.rotate.y;
-      final float forwardX = -MathHelper.sin(yaw);
-      final float forwardZ = -MathHelper.cos(yaw);
-      return forwardX * toPlayerX + forwardZ * toPlayerZ >= SIGHT_COSINE;
+      if(this.sightRecheckTicks > 0) {
+        this.sightRecheckTicks--;
+        return this.cachedPlayerVisible;
+      }
+
+      this.sightRecheckTicks = SIGHT_RECHECK_TICKS;
+      this.cachedPlayerVisible = hasWalkableLineOfSight(
+        smap.getCollisionGeometry(),
+        this.getPosition(),
+        player.getPosition()
+      );
+      return this.cachedPlayerVisible;
+    }
+
+    private void tickChase(final SMap smap, final SubmapObject210 player) {
+      final CollisionGeometry collision = smap.getCollisionGeometry();
+      ensureNavigation(collision);
+
+      final int currentPrimitive = collision.getCollisionPrimitiveAtPoint(
+        this.getPosition().x,
+        this.getPosition().y,
+        this.getPosition().z,
+        true,
+        true
+      );
+      final int playerPrimitive = collision.getCollisionPrimitiveAtPoint(
+        player.getPosition().x,
+        player.getPosition().y,
+        player.getPosition().z,
+        true,
+        true
+      );
+
+      if(this.pathRecheckTicks <= 0
+        || this.chasePath.isEmpty()
+        || this.chasePathIndex >= this.chasePath.size()
+        || !this.chasePath.contains(playerPrimitive)) {
+        this.chasePath = findPath(collision, currentPrimitive, playerPrimitive);
+        this.chasePathIndex = this.chasePath.size() > 1 ? 1 : 0;
+        this.pathRecheckTicks = PATH_RECHECK_TICKS;
+      } else {
+        this.pathRecheckTicks--;
+      }
+
+      while(this.chasePathIndex < this.chasePath.size()
+        && currentPrimitive == this.chasePath.get(this.chasePathIndex)) {
+        this.chasePathIndex++;
+      }
+
+      final boolean direct =
+        hasWalkableLineOfSight(collision, this.getPosition(), player.getPosition());
+
+      if(direct || this.chasePathIndex >= this.chasePath.size()) {
+        this.moveTowards(smap, this.toPlayer, chaseSpeed());
+        return;
+      }
+
+      final int waypointPrimitive = this.chasePath.get(this.chasePathIndex);
+      this.movement
+        .set(navCentres[waypointPrimitive])
+        .sub(this.getPosition());
+
+      this.moveTowards(smap, this.movement, chaseSpeed());
     }
 
     private void tickPatrol(final SMap smap) {
@@ -535,7 +965,7 @@ public final class VisibleEncountersMod {
       }
     }
 
-    private void engage(final SMap smap) {
+    private void engage(final SMap smap, final boolean playerInitiative) {
       if(this.state == State.ENGAGED) {
         return;
       }
@@ -543,7 +973,9 @@ public final class VisibleEncountersMod {
       this.state = State.ENGAGED;
       this.hidden_128 = true;
       this.showAlertIndicator_194 = false;
+      this.alertTicks = 0;
       CONSUMED_SLOTS.add(this.slot);
+      pendingPlayerInitiative = playerInitiative;
 
       // Select the exact encounter represented by this field actor, then use
       // the retail SMap battle transition so post-battle restoration, camera
