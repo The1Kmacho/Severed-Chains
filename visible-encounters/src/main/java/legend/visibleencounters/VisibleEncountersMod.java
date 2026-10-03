@@ -12,6 +12,7 @@ import legend.core.renderer.TextureInternalFormat;
 import legend.game.EngineStates;
 import legend.game.combat.encounters.Encounter;
 import legend.game.modding.events.battle.BattleStartedEvent;
+import legend.game.modding.events.submap.SubmapBattleTransitionEvent;
 import legend.game.modding.events.submap.SubmapEncounterRateEvent;
 import legend.game.modding.events.submap.SubmapRuntimeObjectsEvent;
 import legend.game.scripting.ScriptState;
@@ -86,10 +87,15 @@ public final class VisibleEncountersMod {
   private static final float SPAWN_MAX_DISTANCE = 1800.0f;
   private static final float SIGHT_COSINE = 0.50f; // 120-degree cone.
 
+  private static final int TRANSITION_NONE = 0;
+  private static final int TRANSITION_PLAYER_INITIATIVE = 1;
+  private static final int TRANSITION_ENEMY_ENGAGED = 2;
+
   private static int activeCut = Integer.MIN_VALUE;
   private static Object activeSubmap;
   private static boolean visibleEncountersEnabled;
   private static boolean pendingPlayerInitiative;
+  private static int pendingTransitionStyle;
   private static final Set<Integer> CONSUMED_SLOTS = new HashSet<>();
 
   private static CollisionGeometry navGeometry;
@@ -198,6 +204,26 @@ public final class VisibleEncountersMod {
         CONSUMED_SLOTS.size()
       );
     }
+  }
+
+  @EventListener
+  public static void battleTransition(final SubmapBattleTransitionEvent event) {
+    if(event.getSubmap() != activeSubmap || pendingTransitionStyle == TRANSITION_NONE) {
+      return;
+    }
+
+    if(pendingTransitionStyle == TRANSITION_PLAYER_INITIATIVE) {
+      // Expanding boxagon: quick, bright, and visually distinct from a normal
+      // encounter without adding a text banner.
+      event.fadeType = 5;
+      event.fadeFrames = 8;
+    } else {
+      // Reversed boxagon communicates that the enemy initiated contact.
+      event.fadeType = 6;
+      event.fadeFrames = 9;
+    }
+
+    pendingTransitionStyle = TRANSITION_NONE;
   }
 
   @EventListener
@@ -800,6 +826,15 @@ public final class VisibleEncountersMod {
 
       if(this.state == State.CHASE) {
         if(this.alertTicks > 0) {
+          final int alertAge = ALERT_TICKS - this.alertTicks;
+          if(alertAge < 18) {
+            final float phase = alertAge / 17.0f * MathHelper.PI;
+            this.alertIndicatorOffsetY_198 =
+              90 + java.lang.Math.round(MathHelper.sin(phase) * 18.0f);
+          } else {
+            this.alertIndicatorOffsetY_198 = 90;
+          }
+
           this.alertTicks--;
           if(this.alertTicks == 0) {
             this.showAlertIndicator_194 = false;
@@ -815,6 +850,7 @@ public final class VisibleEncountersMod {
           this.state = State.PATROL;
           this.showAlertIndicator_194 = false;
           this.alertTicks = 0;
+          this.attachedEffectData_1d0.shouldRenderTmdDust_04 = false;
           this.patrolMoveTicks = 0;
           this.patrolIdleTicks = PATROL_IDLE_TICKS_MIN;
           this.chasePath = List.of();
@@ -877,6 +913,13 @@ public final class VisibleEncountersMod {
       collision.getMiddleOfCollisionPrimitive(fallbackPrimitive, this.spawnCandidate);
       this.model_00.coord2_14.coord.transfer.set(this.spawnCandidate);
       this.model_00.coord2_14.transforms.scale.set(FIELD_MODEL_SCALE, FIELD_MODEL_SCALE, FIELD_MODEL_SCALE);
+
+      // Runtime battle models need the same grounding cue as authored field
+      // actors. SMap's normal shadow renderer handles the actual projection.
+      this.model_00.shadowType_cc = 1;
+      this.model_00.shadowSize_10c.set(32.0f, 1.0f, 24.0f);
+      this.model_00.shadowOffset_118.zero();
+
       this.home.set(this.spawnCandidate);
       this.collidedPrimitiveIndex_16c = fallbackPrimitive;
       this.hidden_128 = false;
@@ -894,6 +937,11 @@ public final class VisibleEncountersMod {
       this.pathRecheckTicks = 0;
       this.chasePath = List.of();
       this.chasePathIndex = 0;
+
+      this.attachedEffectData_1d0.shouldRenderTmdDust_04 = true;
+      this.attachedEffectData_1d0.instantiationIntervalDust_30 = 8;
+      this.attachedEffectData_1d0.size_28 = 18;
+      this.attachedEffectData_1d0.maxTicks_38 = 12;
       this.useAnimation(this.chaseAnimation, true);
     }
 
@@ -991,6 +1039,8 @@ public final class VisibleEncountersMod {
     }
 
     private void tickPatrol(final SMap smap) {
+      this.attachedEffectData_1d0.shouldRenderTmdDust_04 = false;
+
       if(this.patrolIdleTicks > 0) {
         this.patrolIdleTicks--;
         this.movement.zero();
@@ -1056,8 +1106,20 @@ public final class VisibleEncountersMod {
       }
 
       if(this.movement.x != 0.0f || this.movement.z != 0.0f) {
-        this.model_00.coord2_14.transforms.rotate.y =
+        final float desiredYaw =
           MathHelper.atan2(this.movement.x, this.movement.z) + MathHelper.PI;
+        float delta = desiredYaw - this.model_00.coord2_14.transforms.rotate.y;
+
+        while(delta > MathHelper.PI) {
+          delta -= MathHelper.PI * 2.0f;
+        }
+        while(delta < -MathHelper.PI) {
+          delta += MathHelper.PI * 2.0f;
+        }
+
+        final float maxTurn = this.state == State.CHASE ? 0.16f : 0.10f;
+        delta = java.lang.Math.max(-maxTurn, java.lang.Math.min(maxTurn, delta));
+        this.model_00.coord2_14.transforms.rotate.y += delta;
       }
     }
 
@@ -1071,8 +1133,13 @@ public final class VisibleEncountersMod {
       // Hiding it immediately makes it visibly pop out before the screen fades.
       this.showAlertIndicator_194 = false;
       this.alertTicks = 0;
+      this.attachedEffectData_1d0.shouldRenderTmdDust_04 = false;
       CONSUMED_SLOTS.add(this.slot);
       pendingPlayerInitiative = playerInitiative;
+      pendingTransitionStyle =
+        playerInitiative
+          ? TRANSITION_PLAYER_INITIATIVE
+          : TRANSITION_ENEMY_ENGAGED;
 
       // Select the exact encounter represented by this field actor, then use
       // the retail SMap battle transition so post-battle restoration, camera
