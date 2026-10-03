@@ -8,6 +8,7 @@ on:
 
 permissions:
   contents: read
+  actions: read
 
 jobs:
   windows-test-build:
@@ -50,6 +51,7 @@ jobs:
           - mods/visual-remaster.jar
           - mods/gameplay-overhaul.jar
           - mods/field-battle-models.jar
+          - mods/visible-encounters.jar
 
           This artifact is produced only from the development branch.
           Feature work remains isolated on its work branches until intentionally integrated.
@@ -63,3 +65,85 @@ jobs:
           if-no-files-found: error
           retention-days: 14
           compression-level: 6
+
+  android-test-build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+
+    steps:
+      - name: Check out build branch
+        uses: actions/checkout@v4
+
+      - name: Set up Java 25 for Severed Chains
+        uses: actions/setup-java@v4
+        with:
+          distribution: corretto
+          java-version: '25'
+          cache: gradle
+
+      - name: Prepare Android game payload
+        run: |
+          chmod +x ./gradlew
+          ./gradlew clean prepareAndroidRuntime \
+            -PandroidRuntime=true \
+            -PlwjglVersion=3.4.1 \
+            --stacktrace
+          rm -rf android/app/src/main/assets/game android/app/src/main/assets/runtime
+          mkdir -p android/app/src/main/assets/game android/app/src/main/assets/runtime
+          cp -a build/android-game/. android/app/src/main/assets/game/
+
+      - name: Download Android OpenJDK 25 runtime
+        uses: dawidd6/action-download-artifact@v9
+        with:
+          workflow: build.yml
+          workflow_conclusion: completed
+          repo: FCL-Team/Android-OpenJDK-Build
+          branch: Build_JRE_25
+          name: jre25-multiarch
+          path: android/app/src/main/assets/runtime
+
+      - name: Verify Android JRE payload
+        run: |
+          test -f android/app/src/main/assets/runtime/universal.tar.xz
+          test -f android/app/src/main/assets/runtime/bin-arm64.tar.xz
+          ls -lh android/app/src/main/assets/runtime
+
+      - name: Fetch pinned Android native dependencies
+        run: |
+          chmod +x android/scripts/fetch-mobile-deps.sh
+          android/scripts/fetch-mobile-deps.sh
+
+      - name: Set up Java 17 for Android Gradle Plugin
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install Android platform and NDK
+        run: |
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager \
+            "platforms;android-37" \
+            "build-tools;36.0.0" \
+            "ndk;28.2.13676358" \
+            "cmake;3.22.1"
+
+      - name: Set up Gradle 9.6
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.6.0'
+
+      - name: Build Android ARM64 debug APK
+        run: gradle -p android :app:assembleDebug --stacktrace
+
+      - name: Upload Android development APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: Severed-Chains-Combined-Development-Android-ARM64
+          path: android/app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
+          retention-days: 14
+          compression-level: 0

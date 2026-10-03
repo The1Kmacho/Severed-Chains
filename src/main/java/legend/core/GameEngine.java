@@ -85,6 +85,7 @@ public final class GameEngine {
   private static final Logger LOGGER = LogManager.getFormatterLogger(GameEngine.class);
 
   public static final boolean IS_WINDOWS = System.getProperty("os.name").startsWith("Windows");
+  public static final boolean IS_ANDROID = Boolean.getBoolean("severedchains.android");
 
   private static ModManager.Access MOD_ACCESS;
   private static LangManager.Access LANG_ACCESS;
@@ -178,14 +179,21 @@ public final class GameEngine {
   }
 
   public static void start() throws IOException {
-    UPDATE_CHECK_FINISHED = false;
     UPDATE = null;
-    UPDATER.check(release -> {
-      synchronized(UPDATER_LOCK) {
-        UPDATE_CHECK_FINISHED = true;
-        UPDATE = release;
-      }
-    });
+
+    if(IS_ANDROID) {
+      // Android packages are sideloaded as complete app builds. The desktop
+      // self-updater cannot replace an installed APK, so never start it here.
+      UPDATE_CHECK_FINISHED = true;
+    } else {
+      UPDATE_CHECK_FINISHED = false;
+      UPDATER.check(release -> {
+        synchronized(UPDATER_LOCK) {
+          UPDATE_CHECK_FINISHED = true;
+          UPDATE = release;
+        }
+      });
+    }
 
     loadLangOverrides(Main.ORIGINAL_LOCALE);
 
@@ -257,7 +265,9 @@ public final class GameEngine {
     RENDERER.init();
     RENDERER.events().onClose(Async::shutdown);
     GPU.init();
-    DISCORD.init();
+    if(!IS_ANDROID) {
+      DISCORD.init();
+    }
     openalThread.start();
 
     time = System.nanoTime();
@@ -265,7 +275,9 @@ public final class GameEngine {
     try {
       RENDERER.run();
     } finally {
-      DISCORD.destroy();
+      if(!IS_ANDROID) {
+        DISCORD.destroy();
+      }
       AUDIO_THREAD.destroy();
       RENDERER.delete();
       UPDATER.delete();
@@ -453,15 +465,22 @@ public final class GameEngine {
       .uvSize(1.0f, 1.0f)
       .build();
 
-    RENDERER.window().setWindowIcon(Path.of("gfx/textures/icon.png"));
+    if(!IS_ANDROID) {
+      RENDERER.window().setWindowIcon(Path.of("gfx/textures/icon.png"));
 
-    try {
-      VideoPlayer.play(Path.of("gfx/intro.mp4"), GameEngine::renderIntro, () -> {
-        cinematicFinished = true;
+      try {
+        VideoPlayer.play(Path.of("gfx/intro.mp4"), GameEngine::renderIntro, () -> {
+          cinematicFinished = true;
+          RENDERER.setRenderCallback(GameEngine::renderIntro);
+        });
+      } catch(final IOException e) {
+        LOGGER.warn("Failed to play intro", e);
         RENDERER.setRenderCallback(GameEngine::renderIntro);
-      });
-    } catch(final IOException e) {
-      LOGGER.warn("Failed to play intro", e);
+      }
+    } else {
+      // The launcher intro is the only path backed by JavaCV/desktop FFmpeg.
+      // Game-disc FMVs use the engine's own decoder and remain enabled.
+      cinematicFinished = true;
       RENDERER.setRenderCallback(GameEngine::renderIntro);
     }
 

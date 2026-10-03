@@ -1,0 +1,9 @@
+.gradle/
+build/
+app/build/
+app/libs/*.aar
+app/src/sdl/
+app/src/main/assets/game/
+app/src/main/assets/runtime/
+vendor/SDL/
+local.properties
