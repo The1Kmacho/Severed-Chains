@@ -17,12 +17,16 @@ import legend.game.combat.bent.PlayerBattleEntity;
 import legend.game.combat.effects.AdditionOverlaysEffect44;
 import legend.game.combat.effects.GenericAttachment1c;
 import legend.game.combat.effects.GuardEffect06;
+import legend.gameplayoverhaul.effects.CombatImpactEffect;
+import legend.gameplayoverhaul.effects.DragoonAuraEffect;
 import legend.game.combat.types.AttackType;
 import legend.game.modding.events.battle.BattleEffectDisplayEvent;
 import legend.game.modding.events.battle.ArcherSpEvent;
 import legend.game.modding.events.battle.BattleEntityTurnEvent;
 import legend.game.modding.events.battle.BattleEndedEvent;
 import legend.game.modding.events.battle.BattleIntroCameraEvent;
+import legend.game.modding.events.battle.BattleStartedEvent;
+import legend.game.modding.events.battle.CombatantModelLoadedEvent;
 import legend.game.modding.events.battle.PlayerAttackPreparedEvent;
 import legend.game.modding.events.battle.GuardUsedEvent;
 import legend.game.modding.events.battle.IncomingAttackCueEvent;
@@ -39,6 +43,7 @@ import org.apache.logging.log4j.Logger;
 import org.legendofdragoon.modloader.Mod;
 import org.legendofdragoon.modloader.events.EventListener;
 import org.legendofdragoon.modloader.registries.RegistryId;
+import org.joml.Matrix3f;
 import org.joml.Vector3f;
 
 import java.util.ArrayList;
@@ -47,9 +52,11 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
+import static legend.core.GameEngine.GTE;
 import static legend.core.GameEngine.REGISTRIES;
 import static legend.core.GameEngine.SCRIPTS;
 import static legend.game.EngineStates.currentEngineState_8004dd04;
+import static legend.game.Graphics.lightColourMatrix_800c3508;
 import static legend.game.combat.environment.BattleCamera.UPDATE_REFPOINT;
 import static legend.game.combat.environment.BattleCamera.UPDATE_VIEWPOINT;
 import static legend.game.Scus94491BpeSegment_8006.battleState_8006e398;
@@ -76,6 +83,11 @@ public final class GameplayOverhaulMod {
 
   private static final Map<MonsterBattleEntity, Integer> BREAK_GAUGE = new HashMap<>();
   private static final Map<Integer, RegistryId> LAST_COMPLETED_ADDITIONS = new HashMap<>();
+  private static final Map<PlayerBattleEntity, ScriptState<?>> DRAGOON_AURAS = new HashMap<>();
+
+  private static final Matrix3f SAVED_BATTLE_LIGHT_COLOUR = new Matrix3f();
+  private static final Vector3f SAVED_BATTLE_AMBIENT = new Vector3f();
+  private static boolean battleLightingPolished;
 
   private static final int MIN_PARRY_REACTION_TICKS = 14;
 
@@ -295,6 +307,8 @@ public final class GameplayOverhaulMod {
     if(activeArcherPlayer != null && activeArcherAttackResolved) {
       clearArcherAdditionState();
     }
+
+    updateDragoonAuras();
   }
 
   @EventListener
@@ -303,9 +317,30 @@ public final class GameplayOverhaulMod {
     if(activeArcherPlayer != null) {
       clearArcherAdditionState();
     }
+
+    clearDragoonAuras();
+    restoreBattleLighting();
     BREAK_GAUGE.clear();
     LAST_COMPLETED_ADDITIONS.clear();
     NEGATED_ATTACKS.clear();
+  }
+
+  @EventListener
+  public static void battleStarted(final BattleStartedEvent event) {
+    polishBattleLighting();
+    updateDragoonAuras();
+  }
+
+  @EventListener
+  public static void combatantModelLoaded(final CombatantModelLoadedEvent event) {
+    // Player templates already provide authored shadows. Generic monster models
+    // usually load with shadows disabled, so give them a restrained contact
+    // shadow without overriding encounter-specific shadow scripts.
+    if((event.combatant.flags_19e & 0x4) == 0 && event.model.shadowType_cc == 0) {
+      event.model.shadowType_cc = 1;
+      event.model.shadowSize_10c.set(1.15f, 1.0f, 0.78f);
+      event.model.shadowOffset_118.zero();
+    }
   }
 
   @EventListener
@@ -353,12 +388,21 @@ public final class GameplayOverhaulMod {
     }
 
     if(!(event.attacker instanceof final PlayerBattleEntity player)
-      || event.attackType != AttackType.PHYSICAL
-      || player.isDragoon()) {
+      || event.attackType != AttackType.PHYSICAL) {
+      return;
+    }
+
+    if(player.isDragoon()) {
+      if(event.damage > 0) {
+        spawnImpact(event.defender, CombatImpactEffect.Style.DRAGOON);
+      }
       return;
     }
 
     if(player.character.isArcher()) {
+      boolean completed = false;
+      boolean finalAddition = false;
+
       if(isActiveArcherAddition(player)) {
         if(!activeArcherResolved) {
           resolveArcherAddition(false);
@@ -371,20 +415,41 @@ public final class GameplayOverhaulMod {
           final CharacterAdditionInfo info = player.character.getAdditionInfo(activeArcherAddition);
           if(addition != null && info != null) {
             event.damage = java.lang.Math.max(1, event.damage * addition.getDamage(player.character, info) / 100);
-            addElementalBonus(event, player.getElement(), isFinal(addition) ? 25 : 10);
+            finalAddition = isFinal(addition);
+            addElementalBonus(event, player.getElement(), finalAddition ? 25 : 10);
             awardArcherAdditionXp(player, addition, info);
+            completed = true;
           }
         }
+      }
+
+      if(event.damage > 0) {
+        spawnImpact(
+          event.defender,
+          completed && finalAddition
+            ? CombatImpactEffect.Style.FINAL
+            : CombatImpactEffect.Style.PIERCE
+        );
       }
       return;
     }
 
-    if(player.addition == null || (battleState_8006e398.additionState_324 & 0x20) == 0) {
-      return;
+    final boolean completed =
+      player.addition != null && (battleState_8006e398.additionState_324 & 0x20) != 0;
+    final boolean finalAddition = completed && isFinal(player.addition);
+
+    if(completed) {
+      addElementalBonus(event, player.getElement(), finalAddition ? 25 : 10);
     }
 
-    final int percent = isFinal(player.addition) ? 25 : 10;
-    addElementalBonus(event, player.getElement(), percent);
+    if(event.damage > 0) {
+      spawnImpact(
+        event.defender,
+        finalAddition
+          ? CombatImpactEffect.Style.FINAL
+          : physicalImpactStyle(player)
+      );
+    }
   }
 
   @EventListener
@@ -657,7 +722,8 @@ public final class GameplayOverhaulMod {
             new RegistryId(MOD_ID, "perfect_d_attack"),
             LodMod.UNARY_STAT_MOD_TYPE.get().make(new UnaryStatModConfig().percent(20).turns(selfEffectTurns(1)))
           );
-          event.battle.hud.showEffectNotification("PERFECT: D-ATK+20%", TextColour.GOLD);
+          spawnImpact(player, CombatImpactEffect.Style.DRAGOON);
+          event.battle.queueAdditionCompletionReward("+D-ATK", player.character.hasDragoon());
           break;
         }
       }
@@ -1198,6 +1264,7 @@ public final class GameplayOverhaulMod {
 
     if(currentEngineState_8004dd04 instanceof final Battle battle) {
       battle.hud.showBreakFlash(monster);
+      spawnImpact(monster, CombatImpactEffect.Style.BREAK);
 
       if(additionPipeline) {
         battle.queueAdditionCompletionReward("+BREAK", waitForRetailSpSummary);
@@ -1395,6 +1462,104 @@ public final class GameplayOverhaulMod {
       new GenericAttachment1c()
     );
     lifespan.ticksRemaining_1a = PARRY_GUARD_EFFECT_TICKS;
+  }
+
+  private static CombatImpactEffect.Style physicalImpactStyle(final PlayerBattleEntity player) {
+    return switch(player.charId_272) {
+      case 0, 3 -> CombatImpactEffect.Style.SLASH;   // Dart / Rose
+      case 1, 2, 5, 8 -> CombatImpactEffect.Style.PIERCE; // spear / bow
+      case 4, 6 -> CombatImpactEffect.Style.BLUNT;  // Haschel / Meru
+      case 7 -> CombatImpactEffect.Style.HEAVY;     // Kongol
+      default -> CombatImpactEffect.Style.BLUNT;
+    };
+  }
+
+  private static void spawnImpact(
+    final BattleEntity27c target,
+    final CombatImpactEffect.Style style
+  ) {
+    SEffe.allocateEffectManager(
+      "GameplayOverhaulCombatImpact",
+      null,
+      new CombatImpactEffect(target, style)
+    );
+  }
+
+  private static void updateDragoonAuras() {
+    for(final var playerState : battleState_8006e398.alivePlayerBents_eac) {
+      final PlayerBattleEntity player = playerState.innerStruct_00;
+
+      if(player.isDragoon()) {
+        if(!DRAGOON_AURAS.containsKey(player)) {
+          DRAGOON_AURAS.put(
+            player,
+            SEffe.allocateEffectManager(
+              "GameplayOverhaulDragoonAura",
+              null,
+              new DragoonAuraEffect(player)
+            )
+          );
+        }
+      } else {
+        final ScriptState<?> aura = DRAGOON_AURAS.remove(player);
+        if(aura != null) {
+          aura.deallocateWithChildren();
+        }
+      }
+    }
+  }
+
+  private static void clearDragoonAuras() {
+    for(final ScriptState<?> aura : DRAGOON_AURAS.values()) {
+      if(aura != null) {
+        aura.deallocateWithChildren();
+      }
+    }
+    DRAGOON_AURAS.clear();
+  }
+
+  private static void polishBattleLighting() {
+    if(battleLightingPolished) {
+      return;
+    }
+
+    SAVED_BATTLE_LIGHT_COLOUR.set(lightColourMatrix_800c3508);
+    SAVED_BATTLE_AMBIENT.set(GTE.backgroundColour);
+    battleLightingPolished = true;
+
+    // Preserve each stage's authored colour balance while giving combatants
+    // slightly stronger key/fill separation and a touch more ambient depth.
+    lightColourMatrix_800c3508.m00(java.lang.Math.min(1.0f, lightColourMatrix_800c3508.m00() * 1.07f));
+    lightColourMatrix_800c3508.m01(java.lang.Math.min(1.0f, lightColourMatrix_800c3508.m01() * 1.07f));
+    lightColourMatrix_800c3508.m02(java.lang.Math.min(1.0f, lightColourMatrix_800c3508.m02() * 1.07f));
+    lightColourMatrix_800c3508.m10(java.lang.Math.min(1.0f, lightColourMatrix_800c3508.m10() * 1.05f));
+    lightColourMatrix_800c3508.m11(java.lang.Math.min(1.0f, lightColourMatrix_800c3508.m11() * 1.05f));
+    lightColourMatrix_800c3508.m12(java.lang.Math.min(1.0f, lightColourMatrix_800c3508.m12() * 1.05f));
+    lightColourMatrix_800c3508.m20(java.lang.Math.min(1.0f, lightColourMatrix_800c3508.m20() * 1.04f));
+    lightColourMatrix_800c3508.m21(java.lang.Math.min(1.0f, lightColourMatrix_800c3508.m21() * 1.04f));
+    lightColourMatrix_800c3508.m22(java.lang.Math.min(1.0f, lightColourMatrix_800c3508.m22() * 1.04f));
+    GTE.setLightColourMatrix(lightColourMatrix_800c3508);
+
+    GTE.setBackgroundColour(
+      java.lang.Math.max(0.0f, SAVED_BATTLE_AMBIENT.x * 0.93f),
+      java.lang.Math.max(0.0f, SAVED_BATTLE_AMBIENT.y * 0.93f),
+      java.lang.Math.max(0.0f, SAVED_BATTLE_AMBIENT.z * 0.93f)
+    );
+  }
+
+  private static void restoreBattleLighting() {
+    if(!battleLightingPolished) {
+      return;
+    }
+
+    lightColourMatrix_800c3508.set(SAVED_BATTLE_LIGHT_COLOUR);
+    GTE.setLightColourMatrix(lightColourMatrix_800c3508);
+    GTE.setBackgroundColour(
+      SAVED_BATTLE_AMBIENT.x,
+      SAVED_BATTLE_AMBIENT.y,
+      SAVED_BATTLE_AMBIENT.z
+    );
+    battleLightingPolished = false;
   }
 
   private static void addElementalBonus(final AttackEvent event, final Element element, final int percent) {
