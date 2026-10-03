@@ -1486,25 +1486,31 @@ public final class GameplayOverhaulMod {
   }
 
   private static void updateDragoonAuras() {
+    final var iterator = DRAGOON_AURAS.entrySet().iterator();
+    while(iterator.hasNext()) {
+      final var entry = iterator.next();
+      final PlayerBattleEntity player = entry.getKey();
+
+      if(!player.isDragoon() || player.getState().hasFlag(BattleEntity27c.FLAG_DEAD)) {
+        if(entry.getValue() != null) {
+          entry.getValue().deallocateWithChildren();
+        }
+        iterator.remove();
+      }
+    }
+
     for(final var playerState : battleState_8006e398.alivePlayerBents_eac) {
       final PlayerBattleEntity player = playerState.innerStruct_00;
 
-      if(player.isDragoon()) {
-        if(!DRAGOON_AURAS.containsKey(player)) {
-          DRAGOON_AURAS.put(
-            player,
-            SEffe.allocateEffectManager(
-              "GameplayOverhaulDragoonAura",
-              null,
-              new DragoonAuraEffect(player)
-            )
-          );
-        }
-      } else {
-        final ScriptState<?> aura = DRAGOON_AURAS.remove(player);
-        if(aura != null) {
-          aura.deallocateWithChildren();
-        }
+      if(player.isDragoon() && !DRAGOON_AURAS.containsKey(player)) {
+        DRAGOON_AURAS.put(
+          player,
+          SEffe.allocateEffectManager(
+            "GameplayOverhaulDragoonAura",
+            null,
+            new DragoonAuraEffect(player)
+          )
+        );
       }
     }
   }
