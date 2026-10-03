@@ -1,0 +1,75 @@
+plugins {
+  id 'com.android.application'
+}
+
+def gitSha = System.getenv('GITHUB_SHA') ?: 'local'
+
+android {
+  namespace 'org.legendofdragoon.severedchains.android'
+  compileSdk 37
+
+  defaultConfig {
+    applicationId 'org.legendofdragoon.severedchains.android'
+    minSdk 26
+    targetSdk 35
+    versionCode 1
+    versionName '0.1.0'
+
+    buildConfigField 'String', 'GAME_BUILD', '"' + gitSha + '"'
+
+    ndk {
+      abiFilters 'arm64-v8a'
+    }
+
+    externalNativeBuild {
+      cmake {
+        arguments '-DANDROID_STL=c++_shared'
+      }
+    }
+  }
+
+  buildTypes {
+    debug {
+      debuggable true
+      minifyEnabled false
+    }
+    release {
+      minifyEnabled false
+    }
+  }
+
+  sourceSets {
+    main {
+      java.srcDir 'src/sdl/java'
+    }
+  }
+
+  externalNativeBuild {
+    cmake {
+      path file('src/main/cpp/CMakeLists.txt')
+      version '3.31.6'
+    }
+  }
+
+  packaging {
+    jniLibs {
+      useLegacyPackaging = true
+      keepDebugSymbols += ['**/*.so']
+    }
+  }
+
+  compileOptions {
+    sourceCompatibility JavaVersion.VERSION_17
+    targetCompatibility JavaVersion.VERSION_17
+  }
+
+  buildFeatures {
+    buildConfig true
+  }
+}
+
+dependencies {
+  implementation fileTree(dir: 'libs', include: ['*.aar', '*.jar'])
+  implementation 'org.apache.commons:commons-compress:1.27.1'
+  implementation 'org.tukaani:xz:1.10'
+}
