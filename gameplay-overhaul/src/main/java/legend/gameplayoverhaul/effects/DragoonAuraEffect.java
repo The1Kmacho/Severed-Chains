@@ -2,7 +2,6 @@ package legend.gameplayoverhaul.effects;
 
 import legend.core.renderer.Translucency;
 import legend.game.combat.SEffe;
-import legend.game.combat.bent.BattleEntity27c;
 import legend.game.combat.bent.PlayerBattleEntity;
 import legend.game.combat.effects.Effect;
 import legend.game.combat.effects.EffectManagerData6c;
@@ -33,11 +32,6 @@ public final class DragoonAuraEffect implements Effect<EffectManagerParams.VoidT
   @Override
   public void tick(final ScriptState<EffectManagerData6c<EffectManagerParams.VoidType>> state) {
     this.age++;
-    if(this.player == null
-      || !this.player.isDragoon()
-      || this.player.getState().hasFlag(BattleEntity27c.FLAG_DEAD)) {
-      state.deallocateWithChildren();
-    }
   }
 
   @Override
