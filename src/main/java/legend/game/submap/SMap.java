@@ -45,6 +45,7 @@ import legend.game.inventory.screens.TooManyItemsScreen;
 import legend.game.modding.coremod.CoreEngineStateTypes;
 import legend.game.modding.coremod.CoreMod;
 import legend.game.modding.events.characters.DivineDragoonEvent;
+import legend.game.modding.events.submap.SubmapBattleTransitionEvent;
 import legend.game.modding.events.submap.SubmapEncounterAccumulatorEvent;
 import legend.game.modding.events.submap.SubmapLoadEvent;
 import legend.game.modding.events.submap.SubmapWarpEvent;
@@ -3985,7 +3986,18 @@ public class SMap extends EngineState<SMap> {
 
     if(this.mapTransitionTicks_800cab28 == 0) {
       if(fullScreenEffect_800bb140._24 == 0) {
-        startFadeEffect(1, 10);
+        int fadeType = 1;
+        int fadeFrames = 10;
+
+        if(newCut < 0 && newScene < 0x200) {
+          final SubmapBattleTransitionEvent transitionEvent = EVENTS.postEvent(
+            new SubmapBattleTransitionEvent(this, gameState_800babc8, this.submap)
+          );
+          fadeType = transitionEvent.fadeType;
+          fadeFrames = transitionEvent.fadeFrames;
+        }
+
+        startFadeEffect(fadeType, java.lang.Math.max(1, fadeFrames));
         this.mapTransitionTicks_800cab28++;
       }
     } else {
