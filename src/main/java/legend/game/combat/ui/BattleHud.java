@@ -959,8 +959,18 @@ public class BattleHud {
 
     final List<BattleEffectIcon> icons = new ArrayList<>();
     final List<String> tacticalText = new ArrayList<>();
+    int breakValue = -1;
 
     for(final String effect : event.effects) {
+      if(effect.startsWith("BRK ")) {
+        try {
+          breakValue = Integer.parseInt(effect.substring(4).trim());
+        } catch(final NumberFormatException ignored) {
+          breakValue = 0;
+        }
+        continue;
+      }
+
       final BattleEffectIcon icon = this.parseBattleEffectIcon(effect);
       if(icon != null) {
         if(icons.size() < 6) {
@@ -971,23 +981,51 @@ public class BattleHud {
       }
     }
 
+    int cursorY = y - 4;
+
     if(!icons.isEmpty()) {
       this.battleMenu_800c6c34.initIconObjs();
       final float startX = x - icons.size() * 4.0f;
 
       for(int i = 0; i < icons.size(); i++) {
-        this.renderBattleEffectIcon(icons.get(i), startX + i * 8.0f, y - 4.0f);
+        this.renderBattleEffectIcon(icons.get(i), startX + i * 8.0f, cursorY);
       }
+
+      cursorY += 10;
+    }
+
+    if(breakValue >= 0) {
+      this.renderBreakGauge(x, cursorY + 2, breakValue);
+      cursorY += 10;
     }
 
     if(!tacticalText.isEmpty()) {
       this.effectFont.horizontalAlign(align);
-      renderText(
-        String.join(" ", tacticalText),
-        x,
-        y + (icons.isEmpty() ? 0 : 10),
-        this.effectFont
-      );
+      renderText(String.join(" ", tacticalText), x, cursorY, this.effectFont);
+    }
+  }
+
+  private void renderBreakGauge(final int centreX, final int y, final int breakValue) {
+    final int clamped = java.lang.Math.max(0, java.lang.Math.min(100, breakValue));
+    final int segmentWidth = 6;
+    final int segmentGap = 1;
+    final int segments = 10;
+    final int totalWidth = segments * segmentWidth + (segments - 1) * segmentGap;
+    final int startX = centreX - totalWidth / 2;
+
+    for(int i = 0; i < segments; i++) {
+      final int x = startX + i * (segmentWidth + segmentGap);
+      this.drawLine(x, y, x + segmentWidth - 1, y + 2, 0x18, 0x18, 0x20, true);
+
+      final int segmentStart = i * 10;
+      final int fill = java.lang.Math.max(0, java.lang.Math.min(10, clamped - segmentStart));
+      if(fill > 0) {
+        final int width = java.lang.Math.max(1, segmentWidth * fill / 10);
+        final int r = clamped >= 80 ? 0xff : clamped >= 50 ? 0xd8 : 0x70;
+        final int g = clamped >= 80 ? 0x70 : clamped >= 50 ? 0xd8 : 0xd8;
+        final int b = clamped >= 80 ? 0x30 : 0xff;
+        this.drawLine(x, y, x + width - 1, y + 2, r, g, b, true);
+      }
     }
   }
 
