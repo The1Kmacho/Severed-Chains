@@ -23,13 +23,14 @@ java {
 
 compileJava.options.encoding = 'UTF-8'
 
-project.ext.lwjglVersion = "3.4.3"
+project.ext.lwjglVersion = findProperty("lwjglVersion") ?: "3.4.3"
 project.ext.jomlVersion = "1.10.8"
 
 final def operatingSystem = hasProperty("os") ? OperatingSystem.forName(os) : OperatingSystem.current()
 final def architecture = hasProperty("arch") ? arch : System.getProperty("os.arch")
 final def isArm = architecture.startsWith("arm") || architecture.startsWith("aarch64")
 final def isSteamDeck = hasProperty("steamdeck") && "true" == steamdeck
+final def isAndroidRuntime = (findProperty("androidRuntime") ?: "false").toString().toBoolean()
 
 switch(operatingSystem) {
   case OperatingSystem.LINUX:
@@ -86,17 +87,19 @@ dependencies {
   api "org.lwjgl:lwjgl-assimp"
   api "org.lwjgl:lwjgl-shaderc"
   api "org.lwjgl:lwjgl-spvc"
-  runtimeOnly "org.lwjgl:lwjgl::$lwjglNatives"
-  runtimeOnly "org.lwjgl:lwjgl-mimalloc::$lwjglNatives"
-  runtimeOnly "org.lwjgl:lwjgl-sdl::$lwjglNatives"
-  runtimeOnly "org.lwjgl:lwjgl-opengl::$lwjglNatives"
-  runtimeOnly "org.lwjgl:lwjgl-opengles::$lwjglNatives"
-  runtimeOnly "org.lwjgl:lwjgl-openal::$lwjglNatives"
-  runtimeOnly "org.lwjgl:lwjgl-opus::$lwjglNatives"
-  runtimeOnly "org.lwjgl:lwjgl-stb::$lwjglNatives"
-  runtimeOnly "org.lwjgl:lwjgl-assimp::$lwjglNatives"
-  runtimeOnly "org.lwjgl:lwjgl-shaderc::$lwjglNatives"
-  runtimeOnly "org.lwjgl:lwjgl-spvc::$lwjglNatives"
+  if(!isAndroidRuntime) {
+    runtimeOnly "org.lwjgl:lwjgl::$lwjglNatives"
+    runtimeOnly "org.lwjgl:lwjgl-mimalloc::$lwjglNatives"
+    runtimeOnly "org.lwjgl:lwjgl-sdl::$lwjglNatives"
+    runtimeOnly "org.lwjgl:lwjgl-opengl::$lwjglNatives"
+    runtimeOnly "org.lwjgl:lwjgl-opengles::$lwjglNatives"
+    runtimeOnly "org.lwjgl:lwjgl-openal::$lwjglNatives"
+    runtimeOnly "org.lwjgl:lwjgl-opus::$lwjglNatives"
+    runtimeOnly "org.lwjgl:lwjgl-stb::$lwjglNatives"
+    runtimeOnly "org.lwjgl:lwjgl-assimp::$lwjglNatives"
+    runtimeOnly "org.lwjgl:lwjgl-shaderc::$lwjglNatives"
+    runtimeOnly "org.lwjgl:lwjgl-spvc::$lwjglNatives"
+  }
   api "org.joml:joml:${jomlVersion}"
 
   implementation 'org.json:json:20250107'
@@ -118,7 +121,13 @@ dependencies {
 
   // Video decoding for the intro
   implementation 'org.bytedeco:javacv:1.5.13'
-  implementation "org.bytedeco:ffmpeg:8.0-1.5.13:${ffmpegOs}-${ffmpegArch}"
+  if(isAndroidRuntime) {
+    // Android skips the launcher MP4; retain only Java FFmpeg bindings so the
+    // desktop VideoPlayer class can still compile without packaging host JNI.
+    implementation "org.bytedeco:ffmpeg:8.0-1.5.13"
+  } else {
+    implementation "org.bytedeco:ffmpeg:8.0-1.5.13:${ffmpegOs}-${ffmpegArch}"
+  }
 
   testImplementation(platform("org.junit:junit-bom:6.0.0"))
   testImplementation("org.junit.jupiter:junit-jupiter")
@@ -280,6 +289,78 @@ tasks.register('visibleEncountersJar', Jar) {
   archiveFileName = 'visible-encounters.jar'
   destinationDirectory = layout.buildDirectory.dir('libs/mods')
   from layout.buildDirectory.dir('classes/java/visibleEncounters')
+}
+
+// Android packages the Java 25 game as data for an embedded Android HotSpot
+// runtime. The APK project itself is kept under android/ and runs under ART.
+tasks.register('androidGameJar', Jar) {
+  dependsOn tasks.named('classes')
+  archiveFileName = 'lod-game-android.jar'
+  destinationDirectory = layout.buildDirectory.dir('android-jars')
+  from sourceSets.main.output
+  manifest {
+    attributes('Main-Class': 'legend.game.Main')
+  }
+}
+
+tasks.register('prepareAndroidRuntime', Sync) {
+  dependsOn tasks.named('androidGameJar'),
+    tasks.named('visualRemasterJar'),
+    tasks.named('gameplayOverhaulJar'),
+    tasks.named('fieldBattleModelsJar'),
+    tasks.named('visibleEncountersJar')
+
+  into layout.buildDirectory.dir('android-game')
+
+  from(tasks.named('androidGameJar')) {
+    into '.'
+  }
+
+  into('libs') {
+    from(configurations.runtimeClasspath) {
+      exclude '**/*natives-*.jar'
+      exclude '**/javafx-*-linux*.jar'
+      exclude '**/javafx-*-win*.jar'
+      exclude '**/javafx-*-mac*.jar'
+      exclude '**/ffmpeg-*-linux*.jar'
+      exclude '**/ffmpeg-*-windows*.jar'
+      exclude '**/ffmpeg-*-macosx*.jar'
+    }
+  }
+
+  into('gfx') {
+    from 'gfx'
+  }
+
+  into('patches') {
+    from 'patches'
+  }
+
+  into('lang') {
+    from 'lang'
+  }
+
+  into('mods') {
+    from(tasks.named('visualRemasterJar'))
+    from(tasks.named('gameplayOverhaulJar'))
+    from(tasks.named('fieldBattleModelsJar'))
+    from(tasks.named('visibleEncountersJar'))
+  }
+
+  into('mods/visual_remaster') {
+    from 'visual-remaster/assets'
+  }
+
+  from('log4j2.xml')
+  from('gamecontrollerdb.txt')
+  from('LICENSE')
+  from('credits.txt')
+
+  doLast {
+    file("${destinationDir}/isos").mkdirs()
+    file("${destinationDir}/saves").mkdirs()
+    file("${destinationDir}/config").mkdirs()
+  }
 }
 
 tasks.register('clearOutput', Delete) {

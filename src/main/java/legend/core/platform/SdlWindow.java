@@ -25,6 +25,7 @@ import java.util.EnumSet;
 import java.util.Set;
 
 import static legend.core.GameEngine.CONFIG;
+import static legend.core.GameEngine.IS_ANDROID;
 import static legend.core.GameEngine.IS_WINDOWS;
 import static org.lwjgl.sdl.SDLError.SDL_GetError;
 import static org.lwjgl.sdl.SDLKeyboard.SDL_StartTextInput;
@@ -116,7 +117,9 @@ public class SdlWindow extends Window {
     final long[] windowRef = {0};
     final long[] contextRef = {0};
 
-    this.createOpenGlWindow(title, width, height, windowRef, contextRef);
+    if(!IS_ANDROID) {
+      this.createOpenGlWindow(title, width, height, windowRef, contextRef);
+    }
 
     if(windowRef[0] != NULL) {
       this.window = windowRef[0];
@@ -137,7 +140,7 @@ public class SdlWindow extends Window {
     SDL_SetWindowMinimumSize(this.window, 320, 240);
     SDL_GL_SetSwapInterval(0);
 
-    this.pointerCursor = SDL_CreateSystemCursor(SDL_SYSTEM_CURSOR_POINTER);
+    this.pointerCursor = IS_ANDROID ? NULL : SDL_CreateSystemCursor(SDL_SYSTEM_CURSOR_POINTER);
 
     this.render = this.manager.addAction(new Action(this::tick, 60));
   }
@@ -146,12 +149,18 @@ public class SdlWindow extends Window {
     LOGGER.info("Initializing OpenGL 3.3...");
     this.createGlWindow(title, width, height, SDL_GL_CONTEXT_PROFILE_CORE, 3, 3, windowRef, contextRef);
 
+    if(windowRef[0] == NULL || contextRef[0] == NULL) {
+      return;
+    }
+
     final GLCapabilities caps = GL.createCapabilities();
 
     if(!caps.OpenGL33) {
       LOGGER.warn("OpenGL 3.3 is not supported");
-      SDL_DestroyWindow(windowRef[0]);
       SDL_GL_DestroyContext(contextRef[0]);
+      SDL_DestroyWindow(windowRef[0]);
+      windowRef[0] = NULL;
+      contextRef[0] = NULL;
     }
   }
 
@@ -159,12 +168,18 @@ public class SdlWindow extends Window {
     LOGGER.info("Initializing OpenGLES 3.2...");
     this.createGlWindow(title, width, height, SDL_GL_CONTEXT_PROFILE_ES, 3, 2, windowRef, contextRef);
 
+    if(windowRef[0] == NULL || contextRef[0] == NULL) {
+      return;
+    }
+
     final GLESCapabilities caps = GLES.createCapabilities();
 
     if(!caps.GLES32) {
       LOGGER.warn("OpenGLES 3.2 is not supported");
-      SDL_DestroyWindow(windowRef[0]);
       SDL_GL_DestroyContext(contextRef[0]);
+      SDL_DestroyWindow(windowRef[0]);
+      windowRef[0] = NULL;
+      contextRef[0] = NULL;
     }
   }
 
@@ -175,7 +190,7 @@ public class SdlWindow extends Window {
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, majorVersion);
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, minorVersion);
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, profile);
-    SDL_GL_SetAttribute(SDL_GL_CONTEXT_FLAGS, SDL_GL_CONTEXT_DEBUG_FLAG);
+    SDL_GL_SetAttribute(SDL_GL_CONTEXT_FLAGS, IS_ANDROID ? 0 : SDL_GL_CONTEXT_DEBUG_FLAG);
 
     final long window = SDL_CreateWindow(title, width, height, SDL_WINDOW_OPENGL | SDL_WINDOW_HIDDEN | SDL_WINDOW_RESIZABLE);
 
@@ -221,7 +236,9 @@ public class SdlWindow extends Window {
   protected void destroy() {
     this.manager.removeAction(this.render);
     this.events().onClose();
-    SDL_DestroyCursor(this.pointerCursor);
+    if(this.pointerCursor != NULL) {
+      SDL_DestroyCursor(this.pointerCursor);
+    }
     SDL_GL_DestroyContext(this.context);
     SDL_DestroyWindow(this.window);
   }
@@ -284,6 +301,12 @@ public class SdlWindow extends Window {
   @Override
   public void makeFullscreen() {
     LOGGER.info("Switching to fullscreen");
+
+    if(IS_ANDROID) {
+      this.err(SDL_SetWindowFullscreen(this.window, true), "SetWindowFullscreen");
+      return;
+    }
+
     this.monitor = this.getMonitorFromConfig();
     this.vidMode = SDL_GetDesktopDisplayMode(this.monitor);
 
@@ -307,6 +330,10 @@ public class SdlWindow extends Window {
   public void makeWindowed() {
     LOGGER.info("Switching to windowed [%d, %d]", Config.windowWidth(), Config.windowHeight());
 
+    if(IS_ANDROID) {
+      return;
+    }
+
     if(IS_WINDOWS) {
       this.err(SDL_SetWindowBordered(this.window, true), "SetWindowBordered");
       this.err(SDL_SetWindowSize(this.window, Config.windowWidth(), Config.windowHeight()), "SetWindowSize");
@@ -318,6 +345,10 @@ public class SdlWindow extends Window {
 
   @Override
   public void centerWindow() {
+    if(IS_ANDROID) {
+      return;
+    }
+
     try(final MemoryStack stack = stackPush()) {
       final IntBuffer pWidth = stack.mallocInt(1);
       final IntBuffer pHeight = stack.mallocInt(1);
@@ -414,6 +445,10 @@ public class SdlWindow extends Window {
 
   @Override
   public void setWindowIcon(final Path path) {
+    if(IS_ANDROID) {
+      return;
+    }
+
     try(final MemoryStack stack = stackPush()) {
       final IntBuffer w = stack.mallocInt(1);
       final IntBuffer h = stack.mallocInt(1);
