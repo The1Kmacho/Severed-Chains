@@ -119,13 +119,12 @@ jobs:
           distribution: temurin
           java-version: '17'
 
-      - name: Set up Android SDK
-        uses: android-actions/setup-android@v3
-
       - name: Install Android platform and NDK
         run: |
-          yes | sdkmanager --licenses >/dev/null || true
-          sdkmanager \
+          SDKMANAGER="$(find "$ANDROID_HOME/cmdline-tools" -type f -name sdkmanager | sort | tail -1)"
+          test -n "$SDKMANAGER"
+          yes | "$SDKMANAGER" --licenses >/dev/null || true
+          "$SDKMANAGER" \
             "platforms;android-37" \
             "build-tools;36.0.0" \
             "ndk;28.2.13676358" \
