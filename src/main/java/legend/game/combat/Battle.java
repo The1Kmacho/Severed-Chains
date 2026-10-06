@@ -8700,21 +8700,23 @@ public class Battle extends EngineState<Battle> {
     return false;
   }
 
-  @SuppressWarnings({"rawtypes", "unchecked"})
+  @SuppressWarnings("unchecked")
   public void moveBattleEntityRelativeToSelf(final ScriptState<? extends BattleEntity27c> entityState, final float x, final float y, final float z, final int ticks) {
     final BattleEntity27c bent = entityState.innerStruct_00;
-    bent.movementParent_c8 = (ScriptState)entityState;
-    this.FUN_800cdc1c((ScriptState)entityState, 0.0f, 0.0f, 0.0f, x, y, z, 0.0f, ticks);
-    ((ScriptState)entityState).setTempTicker(this::FUN_800cb250);
+    final ScriptState<BattleEntity27c> movementState = (ScriptState<BattleEntity27c>)(ScriptState<?>)entityState;
+    bent.movementParent_c8 = movementState;
+    this.FUN_800cdc1c(movementState, 0.0f, 0.0f, 0.0f, x, y, z, 0.0f, ticks);
+    movementState.setTempTicker(this::FUN_800cb250);
   }
 
-  @SuppressWarnings({"rawtypes", "unchecked"})
+  @SuppressWarnings("unchecked")
   public void moveBattleEntityTo(final ScriptState<? extends BattleEntity27c> entityState, final Vector3f target, final int ticks) {
     final BattleEntity27c bent = entityState.innerStruct_00;
+    final ScriptState<BattleEntity27c> movementState = (ScriptState<BattleEntity27c>)(ScriptState<?>)entityState;
     final Vector3f start = new Vector3f(bent.model_148.coord2_14.coord.transfer);
     bent.movementParent_c8 = null;
-    this.FUN_800cdc1c((ScriptState)entityState, start.x, start.y, start.z, target.x, target.y, target.z, 0.0f, ticks);
-    ((ScriptState)entityState).setTempTicker(this::FUN_800cb250);
+    this.FUN_800cdc1c(movementState, start.x, start.y, start.z, target.x, target.y, target.z, 0.0f, ticks);
+    movementState.setTempTicker(this::FUN_800cb250);
   }
 
   public boolean isBattleEntityMoving(final BattleEntity27c bent) {
