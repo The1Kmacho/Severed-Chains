@@ -8,7 +8,7 @@ import legend.game.combat.ui.BattleActionUseFlowControl;
 import legend.game.modding.coremod.CoreMod;
 import legend.gameplayoverhaul.ui.PartySwitchListMenu;
 import legend.lodmod.LodMod;
-import legend.lodmod.battleactions.RetailBattleAction;
+import legend.lodmod.battleactions.SeveredBattleAction;
 
 import java.util.ArrayList;
 import java.util.HashSet;
@@ -19,10 +19,10 @@ import static legend.core.GameEngine.CONFIG;
 import static legend.game.Scus94491BpeSegment_8006.battleState_8006e398;
 import static legend.game.Scus94491BpeSegment_800b.gameState_800babc8;
 
-public final class SwitchPartyBattleAction extends RetailBattleAction {
+public final class SwitchPartyBattleAction extends SeveredBattleAction {
   public SwitchPartyBattleAction() {
-    // Retail Escape runner icon matches the reused run-out/run-in choreography.
-    super(6);
+    // Three-frame double-arrow icon in battle_icons.png row 1.
+    super(1, 3);
   }
 
   public static boolean hasEligibleReplacement(final Battle battle, final PlayerBattleEntity outgoing) {
@@ -73,6 +73,9 @@ public final class SwitchPartyBattleAction extends RetailBattleAction {
 
     final CharacterData2c character = gameState_800babc8.charData_32c.get(charId);
     if((character.partyFlags_04 & CharacterData2c.IN_PARTY) == 0) {
+      return false;
+    }
+    if((character.partyFlags_04 & CharacterData2c.TEMPORARILY_REMOVED_FROM_PARTY) != 0) {
       return false;
     }
     if(!unlockParty && (character.partyFlags_04 & CharacterData2c.CAN_BE_IN_PARTY) == 0) {

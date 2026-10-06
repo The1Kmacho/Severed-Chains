@@ -15,6 +15,7 @@ public final class PartySwitchPreparation {
   public final ScriptState<PlayerBattleEntity> incomingState;
   public final PlayerBattleEntity outgoing;
   public final PlayerBattleEntity incoming;
+  public final boolean firstEntry;
   public final Vector3f formationPosition = new Vector3f();
   public final Vector3f offFieldPosition = new Vector3f();
 
@@ -29,6 +30,7 @@ public final class PartySwitchPreparation {
     final ScriptState<PlayerBattleEntity> incomingState,
     final PlayerBattleEntity outgoing,
     final PlayerBattleEntity incoming,
+    final boolean firstEntry,
     final CompletableFuture<List<FileData>> modelFiles,
     final CompletableFuture<FileData> textureFile,
     final CompletableFuture<List<FileData>> attackFiles,
@@ -39,6 +41,7 @@ public final class PartySwitchPreparation {
     this.incomingState = incomingState;
     this.outgoing = outgoing;
     this.incoming = incoming;
+    this.firstEntry = firstEntry;
     this.formationPosition.set(outgoing.model_148.coord2_14.coord.transfer);
     this.modelFiles = modelFiles;
     this.textureFile = textureFile;
@@ -55,10 +58,14 @@ public final class PartySwitchPreparation {
   }
 
   public boolean hasFailed() {
-    return this.modelFiles.isCompletedExceptionally()
-      || this.textureFile.isCompletedExceptionally()
-      || this.attackFiles.isCompletedExceptionally()
-      || this.soundFiles.isCompletedExceptionally();
+    return failed(this.modelFiles)
+      || failed(this.textureFile)
+      || failed(this.attackFiles)
+      || failed(this.soundFiles);
+  }
+
+  private static <T> boolean failed(final CompletableFuture<T> future) {
+    return future.isCompletedExceptionally() || future.isDone() && future.getNow(null) == null;
   }
 
   List<FileData> modelFiles() { return this.modelFiles.getNow(null); }

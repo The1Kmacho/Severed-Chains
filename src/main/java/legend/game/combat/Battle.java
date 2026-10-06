@@ -346,6 +346,8 @@ public class Battle extends EngineState<Battle> {
 
   /** Off-field party members retain their live battle stat state here. */
   private final Map<Integer, ScriptState<PlayerBattleEntity>> partySwitchPlayers = new HashMap<>();
+  /** Retail status/equipment state that is stored by active battle slot rather than on the bent. */
+  private final Map<Integer, PartySwitchLegacyState> partySwitchLegacyStates = new HashMap<>();
 
   private int encounterIntroFinishedTick;
 
@@ -8634,8 +8636,9 @@ public class Battle extends EngineState<Battle> {
 
     this.partySwitchPlayers.putIfAbsent(outgoing.charId_272, outgoing.getState());
     ScriptState<PlayerBattleEntity> incomingState = this.partySwitchPlayers.get(incomingCharId);
+    final boolean firstEntry = incomingState == null;
 
-    if(incomingState == null) {
+    if(firstEntry) {
       final CharacterData2c character = gameState_800babc8.charData_32c.get(incomingCharId);
       final int scriptIndex = SCRIPTS.findFreeScriptState();
       final PlayerBattleEntity incoming = new PlayerBattleEntity(this, character.getName().get(), incomingCharId, scriptIndex, this.playerBattleScript_800c66fc);
@@ -8656,6 +8659,7 @@ public class Battle extends EngineState<Battle> {
       incomingState,
       outgoing,
       incoming,
+      firstEntry,
       Loader.loadDirectory(character.getBattleModelPath(incoming)),
       Loader.loadFile(character.getBattleTexturePath(incoming)),
       character.template.loadAttackAnimations(character, incoming),
@@ -8725,13 +8729,23 @@ public class Battle extends EngineState<Battle> {
 
     prep.offFieldPosition.set(prep.outgoing.model_148.coord2_14.coord.transfer);
 
+    // The menu action is the outgoing character's entire turn. Tick the normal
+    // entity-local temporary modifiers exactly once, then freeze everything else.
+    prep.outgoing.turnFinished();
+    prep.outgoing.recalculateSpeedAndPerHitStats();
+
+    final int outgoingAllSlot = prep.outgoing.allBentSlot_274;
+    this.partySwitchLegacyStates.put(
+      prep.outgoing.charId_272,
+      PartySwitchLegacyState.capture(battleState_8006e398, prep.slot, outgoingAllSlot)
+    );
+    this.deallocatePartyStatusScripts(prep.outgoing);
+
     final ScriptState<PlayerBattleEntity> outgoingState = prep.outgoingState;
     outgoingState.clearFlag(FLAG_CURRENT_TURN | FLAG_RELOAD_BATTLE_ACTIONS | FLAG_TAKE_FORCED_TURN);
     outgoingState.setFlag(FLAG_HIDE | FLAG_NO_SCRIPT);
-    outgoingState.loadScriptFile(null);
-    outgoingState.setTempTicker(null);
-    outgoingState.setTicker(null);
-    outgoingState.setDestructor(null);
+    outgoingState.loadScriptFile(this.playerBattleScript_800c66fc, 30);
+    outgoingState.pause();
     this.releasePartySwitchCombatant(prep.outgoing);
 
     final PlayerBattleEntity incoming = prep.incoming;
@@ -8749,16 +8763,32 @@ public class Battle extends EngineState<Battle> {
     incoming.model_148.coord2_14.transforms.rotate.zero();
 
     incomingState.clearFlag(FLAG_DEAD | FLAG_RELOAD_BATTLE_ACTIONS | FLAG_TAKE_FORCED_TURN);
+    // CURRENT_TURN is a choreography lock here: it prevents the scheduler from
+    // starting another turn until the replacement has finished running in.
     incomingState.setFlag(FLAG_HIDE | FLAG_NO_SCRIPT | FLAG_CURRENT_TURN);
     incomingState.setTicker(incoming::bentLoadingTicker);
     incomingState.setDestructor(incoming::bentDestructor);
 
     battleState_8006e398.replacePlayer(prep.slot, incomingState);
+
+    final PartySwitchLegacyState legacyState = this.partySwitchLegacyStates.get(incoming.charId_272);
+    if(legacyState != null) {
+      legacyState.restore(battleState_8006e398, prep.slot, incoming.allBentSlot_274);
+    } else {
+      PartySwitchLegacyState.initialize(incoming).restore(battleState_8006e398, prep.slot, incoming.allBentSlot_274);
+    }
+
     this.combatantTmdAndAnimLoadedCallback(prep.modelFiles(), combatant, false);
     this.loadCombatantTim(combatant, prep.textureFile());
     this.attackAnimationsLoaded(prep.attackFiles(), combatant, false, prep.slot);
     this.charSoundEffectsLoaded(prep.soundFiles(), incoming);
     incoming.bentLoadingTicker(incomingState, incoming);
+
+    if(prep.firstEntry) {
+      for(final Equipment equipment : incoming.equipment_11e.values()) {
+        equipment.applyEffect(incoming);
+      }
+    }
 
     this.dragoonSpells_800c6960.set(prep.slot, this.buildDragoonSpells(incoming.character));
     battlePreloadedEntities_1f8003f4.dragoonAdditionHits_38.set(prep.slot, incoming.character.getDragoonAddition());
@@ -8771,11 +8801,8 @@ public class Battle extends EngineState<Battle> {
   public void finishPartySwitch(final PartySwitchPreparation prep) {
     prep.incoming.turnValue_4c = 0;
     prep.incomingState.clearFlag(FLAG_CURRENT_TURN | FLAG_HIDE | FLAG_NO_SCRIPT | FLAG_RELOAD_BATTLE_ACTIONS | FLAG_TAKE_FORCED_TURN);
-    prep.incomingState.loadScriptFile(this.playerBattleScript_800c66fc);
-
-    // Switching spends the outgoing actor's turn; benched durations then freeze.
-    prep.outgoing.turnFinished();
-    prep.outgoing.recalculateSpeedAndPerHitStats();
+    prep.incomingState.loadScriptFile(this.playerBattleScript_800c66fc, 31);
+    prep.incomingState.resume();
 
     this.restorePlayerBattleAnimation(prep.incoming);
     battleState_8006e398.cacheLivingBents();
@@ -8806,6 +8833,23 @@ public class Battle extends EngineState<Battle> {
       player.getState().clearFlag(FLAG_ANIMATE_ONCE);
     } else {
       player.getState().setFlag(FLAG_ANIMATE_ONCE);
+    }
+  }
+
+  private void deallocatePartyStatusScripts(final PlayerBattleEntity player) {
+    for(int i = 0; i < SCRIPTS.count(); i++) {
+      final ScriptState<?> state = SCRIPTS.getState(i);
+      if(state == null || state == player.getState() || state.callStackDepth() == 0) {
+        continue;
+      }
+
+      if(!(state.innerStruct_00 instanceof EffectManagerData6c<?>)) {
+        continue;
+      }
+
+      if(state.frame().file == this.playerBattleScript_800c66fc && state.getStor(28) == player.getState().index) {
+        state.deallocateWithChildren();
+      }
     }
   }
 
@@ -8850,6 +8894,7 @@ public class Battle extends EngineState<Battle> {
       }
     }
     this.partySwitchPlayers.clear();
+    this.partySwitchLegacyStates.clear();
   }
 
   @Method(0x800f1aa8L)
