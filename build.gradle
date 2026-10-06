@@ -249,6 +249,7 @@ tasks.register('gameplayOverhaulJar', Jar) {
   archiveFileName = 'gameplay-overhaul.jar'
   destinationDirectory = layout.buildDirectory.dir('libs/mods')
   from layout.buildDirectory.dir('classes/java/gameplayOverhaul')
+  from 'gameplay-overhaul/src/main/resources'
 }
 
 // Field battle-model reuse is also packaged as a standalone mod. Core changes

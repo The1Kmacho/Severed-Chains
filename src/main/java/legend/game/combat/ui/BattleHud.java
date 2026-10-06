@@ -1616,6 +1616,17 @@ public class BattleHud {
     }
   }
 
+  /** Rebuilds character-specific portrait geometry after a live battle-slot replacement. */
+  public void refreshCharacterDisplay() {
+    if(this.nameAndPortraitObj != null) {
+      this.nameAndPortraitObj.delete();
+      this.nameAndPortraitObj = null;
+    }
+
+    this.portraits.clear();
+    this.statObjIndices.clear();
+  }
+
   @Method(0x800f4268L)
   public void addFloatingNumberForBent(final int bentIndex, final int damage, final int colour) {
     final BattleEntity27c bent = SCRIPTS.getObject(bentIndex, BattleEntity27c.class);

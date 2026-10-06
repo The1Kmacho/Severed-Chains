@@ -118,6 +118,7 @@ import legend.game.modding.events.battle.IncomingAttackCueEvent;
 import legend.game.modding.events.battle.BattleIntroCameraEvent;
 import legend.game.modding.events.battle.MonsterStatsEvent;
 import legend.game.modding.events.battle.PlayerAttackPreparedEvent;
+import legend.game.modding.events.battle.PlayerBattleSlotChangedEvent;
 import legend.game.scripting.FlowControl;
 import legend.game.scripting.Param;
 import legend.game.scripting.RunningScript;
@@ -170,7 +171,9 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Consumer;
@@ -340,6 +343,11 @@ public class Battle extends EngineState<Battle> {
   public final BattleHud hud = new BattleHud(this);
   public final BattleCamera camera_800c67f0 = new BattleCamera();
   public final ParticleManager particles = new ParticleManager(this.camera_800c67f0);
+
+  /** Off-field party members retain their live battle stat state here. */
+  private final Map<Integer, ScriptState<PlayerBattleEntity>> partySwitchPlayers = new HashMap<>();
+  /** Retail status/equipment state that is stored by active battle slot rather than on the bent. */
+  private final Map<Integer, PartySwitchLegacyState> partySwitchLegacyStates = new HashMap<>();
 
   private int encounterIntroFinishedTick;
 
@@ -2541,6 +2549,7 @@ public class Battle extends EngineState<Battle> {
 
       //LAB_800c83b8
       battleState_8006e398.deallocateBents();
+      this.deallocateBenchedPartySwitchPlayers();
 
       //LAB_800c83d8
       //LAB_800c83f4
@@ -2965,7 +2974,7 @@ public class Battle extends EngineState<Battle> {
             //LAB_800c9334
             combatant.flags_19e |= 0x2;
 
-            final CharacterData2c character = gameState_800babc8.getCharacterBySlot(combatant.charSlot_19c);
+            final CharacterData2c character = combatant.playerBent.character;
 
             Loader
               .loadDirectory(character.getBattleModelPath(combatant.playerBent))
@@ -3060,8 +3069,7 @@ public class Battle extends EngineState<Battle> {
         loadDrgnDir(0, fileIndex).thenAccept(files -> this.attackAnimationsLoaded(files, combatant, true, -1));
       } else {
         //LAB_800c97a4
-        final int charId = gameState_800babc8.charIds_88.getInt(combatant.charSlot_19c);
-        final CharacterData2c character = gameState_800babc8.charData_32c.get(charId);
+        final CharacterData2c character = combatant.playerBent.character;
         character.template.loadAttackAnimations(character, combatant.playerBent).thenAccept(files -> this.attackAnimationsLoaded(files, combatant, false, combatant.charSlot_19c));
       }
     }
@@ -3338,7 +3346,7 @@ public class Battle extends EngineState<Battle> {
   @Method(0x800ca55cL)
   public void loadCombatantTextures(final CombatantStruct1a8 combatant) {
     if(combatant.charIndex_1a2 >= 0) {
-      final CharacterData2c character = gameState_800babc8.getCharacterBySlot(combatant.charSlot_19c);
+      final CharacterData2c character = combatant.playerBent.character;
 
       Loader
         .loadFile(character.getBattleTexturePath(combatant.playerBent))
@@ -8494,9 +8502,7 @@ public class Battle extends EngineState<Battle> {
     //LAB_800eeb10
     //LAB_800eebb4
     //LAB_800eebd8
-    for(int charSlot = 0; charSlot < battleState_8006e398.getPlayerCount(); charSlot++) {
-      final PlayerBattleEntity bent = battleState_8006e398.playerBents_e40.get(charSlot).innerStruct_00;
-
+    for(final PlayerBattleEntity bent : this.getAllBattlePartyPlayers()) {
       //LAB_800eec10
       bent.character.stats.getStat(HP_STAT.get()).setCurrent(java.lang.Math.max(1, bent.stats.getStat(HP_STAT.get()).getCurrent()));
 
@@ -8525,90 +8531,370 @@ public class Battle extends EngineState<Battle> {
   @Method(0x800ef28cL)
   public void initPlayerBattleEntityStats() {
     characterStatsLoaded_800be5d0 = true;
+    this.dragoonSpells_800c6960.clear();
 
-    //LAB_800ef31c
-    //LAB_800ef36c
-    //LAB_800ef38c
     for(int charSlot = 0; charSlot < battleState_8006e398.getPlayerCount(); charSlot++) {
       final PlayerBattleEntity player = battleState_8006e398.playerBents_e40.get(charSlot).innerStruct_00;
-      final DragoonSpells09 spells = new DragoonSpells09(player.character);
-      this.dragoonSpells_800c6960.add(spells);
+      this.dragoonSpells_800c6960.add(this.initPlayerBattleEntityStats(player));
+    }
+  }
 
-      for(final RegistryId spellId : player.character.getUnlockedSpells()) {
-        spells.spells_01.add(REGISTRIES.spells.getEntry(spellId).get());
+  private DragoonSpells09 buildDragoonSpells(final CharacterData2c character) {
+    final DragoonSpells09 spells = new DragoonSpells09(character);
+    for(final RegistryId spellId : character.getUnlockedSpells()) {
+      spells.spells_01.add(REGISTRIES.spells.getEntry(spellId).get());
+    }
+    return spells;
+  }
+
+  private DragoonSpells09 initPlayerBattleEntityStats(final PlayerBattleEntity player) {
+    final DragoonSpells09 spells = this.buildDragoonSpells(player.character);
+    player.stats.set(player.character.stats);
+
+    final UnaryStat attack = player.stats.getStat(ATTACK_STAT.get());
+    final UnaryStat magicAttack = player.stats.getStat(MAGIC_ATTACK_STAT.get());
+    final UnaryStat defense = player.stats.getStat(DEFENSE_STAT.get());
+    final UnaryStat magicDefense = player.stats.getStat(MAGIC_DEFENSE_STAT.get());
+    final UnaryStat attackHit = player.stats.getStat(ATTACK_HIT_STAT.get());
+    final UnaryStat magicHit = player.stats.getStat(MAGIC_HIT_STAT.get());
+    final UnaryStat attackAvoid = player.stats.getStat(ATTACK_AVOID_STAT.get());
+    final UnaryStat magicAvoid = player.stats.getStat(MAGIC_AVOID_STAT.get());
+    final UnaryStat guardHeal = player.stats.getStat(GUARD_HEAL_STAT.get());
+
+    player.level_04 = player.character.level_12;
+    player.dlevel_06 = player.character.dlevel_13;
+    player.status_0e = player.character.getStatusAndFlags();
+    player.selectedAddition_58 = player.character.selectedAddition_19;
+    player.addition = player.character.selectedAddition_19 != null ? REGISTRIES.additions.getEntry(player.character.selectedAddition_19).get() : null;
+    player.equipment_11e.clear();
+
+    for(final EquipmentSlot slot : EquipmentSlot.values()) {
+      final Equipment equipment = player.character.getEquipment(slot);
+      if(equipment != null) {
+        player.equipment_11e.put(slot, equipment);
+        player.specialEffectFlag_14 |= equipment.flags_00;
+        player.equipmentAttackElements_1c.addAll(equipment.attackElement_04);
+        player.equipmentElementalResistance_20.addAll(equipment.elementalResistance_06);
+        player.equipmentElementalImmunity_22.addAll(equipment.elementalImmunity_07);
+        player.equipmentStatusResist_24 |= equipment.statusResist_08;
+        player.equipmentAttack1_28 += equipment.attack_10;
+        attack.setRaw(attack.getRaw() + equipment.attack_10);
+        magicAttack.setRaw(magicAttack.getRaw() + equipment.magicAttack_11);
+        defense.setRaw(defense.getRaw() + equipment.defence_12);
+        magicDefense.setRaw(magicDefense.getRaw() + equipment.magicDefence_13);
+        attackHit.setRaw(attackHit.getRaw() + equipment.attackHit_14);
+        magicHit.setRaw(magicHit.getRaw() + equipment.magicHit_15);
+        attackAvoid.setRaw(attackAvoid.getRaw() + equipment.attackAvoid_16);
+        magicAvoid.setRaw(magicAvoid.getRaw() + equipment.magicAvoid_17);
+        guardHeal.setRaw(guardHeal.getRaw() + equipment.getGuardHealBonus());
+        player.onHitStatusChance_44 += equipment.onHitStatusChance_18;
+        player.equipmentOnHitStatus_4a |= equipment.onHitStatus_1b;
+        player.physicalImmunity_110 |= equipment.physicalImmunity;
+        player.magicalImmunity_112 |= equipment.magicalImmunity;
+        player.physicalResistance_114 |= equipment.physicalResistance;
+        player.magicalResistance_116 |= equipment.magicalResistance;
+        player.spMultiplier_128 += equipment.spMultiplier;
+        player.spPerPhysicalHit_12a += equipment.spPerPhysicalHit;
+        player.mpPerPhysicalHit_12c += equipment.mpPerPhysicalHit;
+        player.spPerMagicalHit_12e += equipment.spPerMagicalHit;
+        player.mpPerMagicalHit_130 += equipment.mpPerMagicalHit;
+        player.escapeBonus_132 += equipment.escapeBonus;
+        player.hpRegen_134 += equipment.hpRegen;
+        player.mpRegen_136 += equipment.mpRegen;
+        player.spRegen_138 += equipment.spRegen;
+        player.revive_13a += equipment.revive;
+        player.hpMulti_13c += equipment.hpMultiplier;
+        player.mpMulti_13e += equipment.mpMultiplier;
+        player._142 |= equipment.onHitStatus_1b;
       }
-
-      //LAB_800ef400
-      player.stats.set(player.character.stats);
-
-      final UnaryStat attack = player.stats.getStat(ATTACK_STAT.get());
-      final UnaryStat magicAttack = player.stats.getStat(MAGIC_ATTACK_STAT.get());
-      final UnaryStat defense = player.stats.getStat(DEFENSE_STAT.get());
-      final UnaryStat magicDefense = player.stats.getStat(MAGIC_DEFENSE_STAT.get());
-      final UnaryStat attackHit = player.stats.getStat(ATTACK_HIT_STAT.get());
-      final UnaryStat magicHit = player.stats.getStat(MAGIC_HIT_STAT.get());
-      final UnaryStat attackAvoid = player.stats.getStat(ATTACK_AVOID_STAT.get());
-      final UnaryStat magicAvoid = player.stats.getStat(MAGIC_AVOID_STAT.get());
-      final UnaryStat guardHeal = player.stats.getStat(GUARD_HEAL_STAT.get());
-
-      player.level_04 = player.character.level_12;
-      player.dlevel_06 = player.character.dlevel_13;
-      player.status_0e = player.character.getStatusAndFlags();
-      player.selectedAddition_58 = player.character.selectedAddition_19;
-      player.addition = player.character.selectedAddition_19 != null ? REGISTRIES.additions.getEntry(player.character.selectedAddition_19).get() : null;
-
-      player.equipment_11e.clear();
-
-      for(final EquipmentSlot slot : EquipmentSlot.values()) {
-        final Equipment equipment = player.character.getEquipment(slot);
-
-        if(equipment != null) {
-          player.equipment_11e.put(slot, equipment);
-
-          player.specialEffectFlag_14 |= equipment.flags_00;
-          player.equipmentAttackElements_1c.addAll(equipment.attackElement_04);
-          player.equipmentElementalResistance_20.addAll(equipment.elementalResistance_06);
-          player.equipmentElementalImmunity_22.addAll(equipment.elementalImmunity_07);
-          player.equipmentStatusResist_24 |= equipment.statusResist_08;
-          player.equipmentAttack1_28 += equipment.attack_10;
-          attack.setRaw(attack.getRaw() + equipment.attack_10);
-          magicAttack.setRaw(magicAttack.getRaw() + equipment.magicAttack_11);
-          defense.setRaw(defense.getRaw() + equipment.defence_12);
-          magicDefense.setRaw(magicDefense.getRaw() + equipment.magicDefence_13);
-          attackHit.setRaw(attackHit.getRaw() + equipment.attackHit_14);
-          magicHit.setRaw(magicHit.getRaw() + equipment.magicHit_15);
-          attackAvoid.setRaw(attackAvoid.getRaw() + equipment.attackAvoid_16);
-          magicAvoid.setRaw(magicAvoid.getRaw() + equipment.magicAvoid_17);
-          guardHeal.setRaw(guardHeal.getRaw() + equipment.getGuardHealBonus());
-          player.onHitStatusChance_44 += equipment.onHitStatusChance_18;
-          player.equipmentOnHitStatus_4a |= equipment.onHitStatus_1b;
-          player.physicalImmunity_110 |= equipment.physicalImmunity;
-          player.magicalImmunity_112 |= equipment.magicalImmunity;
-          player.physicalResistance_114 |= equipment.physicalResistance;
-          player.magicalResistance_116 |= equipment.magicalResistance;
-          player.spMultiplier_128 += equipment.spMultiplier;
-          player.spPerPhysicalHit_12a += equipment.spPerPhysicalHit;
-          player.mpPerPhysicalHit_12c += equipment.mpPerPhysicalHit;
-          player.spPerMagicalHit_12e += equipment.spPerMagicalHit;
-          player.mpPerMagicalHit_130 += equipment.mpPerMagicalHit;
-          player.escapeBonus_132 += equipment.escapeBonus;
-          player.hpRegen_134 += equipment.hpRegen;
-          player.mpRegen_136 += equipment.mpRegen;
-          player.spRegen_138 += equipment.spRegen;
-          player.revive_13a += equipment.revive;
-          player.hpMulti_13c += equipment.hpMultiplier;
-          player.mpMulti_13e += equipment.mpMultiplier;
-          player._142 |= equipment.onHitStatus_1b;
-        }
-      }
-
-      player.originalSpPerPhysicalHit += player.spPerPhysicalHit_12a;
-      player.originalMpPerPhysicalHit += player.mpPerPhysicalHit_12c;
-      player.originalSpPerMagicalHit += player.spPerMagicalHit_12e;
-      player.originalMpPerMagicalHit += player.mpPerMagicalHit_130;
     }
 
-    //LAB_800ef798
+    player.originalSpPerPhysicalHit += player.spPerPhysicalHit_12a;
+    player.originalMpPerPhysicalHit += player.mpPerPhysicalHit_12c;
+    player.originalSpPerMagicalHit += player.spPerMagicalHit_12e;
+    player.originalMpPerMagicalHit += player.mpPerMagicalHit_130;
+    return spells;
+  }
+
+  @Nullable
+  public PlayerBattleEntity getBattlePlayerForCharacter(final int charId) {
+    for(final ScriptState<PlayerBattleEntity> playerState : battleState_8006e398.playerBents_e40) {
+      if(playerState.innerStruct_00.charId_272 == charId) {
+        return playerState.innerStruct_00;
+      }
+    }
+
+    final ScriptState<PlayerBattleEntity> cached = this.partySwitchPlayers.get(charId);
+    return cached != null ? cached.innerStruct_00 : null;
+  }
+
+  public PartySwitchPreparation preparePartySwitch(final PlayerBattleEntity outgoing, final int incomingCharId) {
+    final int slot = outgoing.typeBentSlot_276;
+    if(slot < 0 || incomingCharId == outgoing.charId_272) {
+      throw new IllegalArgumentException("Invalid party switch");
+    }
+
+    this.partySwitchPlayers.putIfAbsent(outgoing.charId_272, outgoing.getState());
+    ScriptState<PlayerBattleEntity> incomingState = this.partySwitchPlayers.get(incomingCharId);
+    final boolean firstEntry = incomingState == null;
+
+    if(firstEntry) {
+      final CharacterData2c character = gameState_800babc8.charData_32c.get(incomingCharId);
+      final int scriptIndex = SCRIPTS.findFreeScriptState();
+      final PlayerBattleEntity incoming = new PlayerBattleEntity(this, character.getName().get(), incomingCharId, scriptIndex, this.playerBattleScript_800c66fc);
+      incomingState = SCRIPTS.allocateScriptState(scriptIndex, "Party switch " + character.getName().get(), incoming);
+      incomingState.setFlag(FLAG_HIDE | FLAG_NO_SCRIPT);
+      incomingState.setTicker(null);
+      incomingState.setDestructor(null);
+      incoming.element = character.getElement(incoming);
+      this.initPlayerBattleEntityStats(incoming);
+      this.partySwitchPlayers.put(incomingCharId, incomingState);
+    }
+
+    final PlayerBattleEntity incoming = incomingState.innerStruct_00;
+    final CharacterData2c character = incoming.character;
+    return new PartySwitchPreparation(
+      slot,
+      outgoing.getState(),
+      incomingState,
+      outgoing,
+      incoming,
+      firstEntry,
+      Loader.loadDirectory(character.getBattleModelPath(incoming)),
+      Loader.loadFile(character.getBattleTexturePath(incoming)),
+      character.template.loadAttackAnimations(character, incoming),
+      Loader.loadDirectory(character.getBattleSoundsPath(incoming))
+    );
+  }
+
+  /** Direct counterpart to the retail player-script animation setter. */
+  public boolean setBattleEntityAnimation(final ScriptState<? extends BattleEntity27c> entityState, int newAnim) {
+    final BattleEntity27c bent = entityState.innerStruct_00;
+    if(entityState.hasFlag(FLAG_1) || bent.combatant_144 == null) {
+      return false;
+    }
+
+    if(bent instanceof PlayerBattleEntity && bent.combatant_144.assets_14[newAnim] == null) {
+      newAnim = 1;
+    }
+
+    final int currentAnim = bent.currentAnimIndex_270;
+    if(currentAnim >= 0) {
+      if(currentAnim != newAnim) {
+        FUN_800ca194(bent.combatant_144.assets_14[currentAnim]);
+      }
+      bent.currentAnimIndex_270 = -1;
+    }
+
+    if(bent.combatant_144.isAssetLoaded(newAnim)) {
+      FUN_800ca194(bent.combatant_144.assets_14[bent.loadingAnimIndex_26e]);
+      this.loadAnimationAssetIntoModel(bent.model_148, bent.combatant_144, newAnim);
+      entityState.clearFlag(FLAG_ANIMATE_ONCE | FLAG_HIDE);
+      bent.model_148.animationState_9c = 1;
+      bent.loadingAnimIndex_26e = newAnim;
+      bent.currentAnimIndex_270 = -1;
+      return true;
+    }
+
+    this.FUN_800c9e10(bent.combatant_144, newAnim);
+    return false;
+  }
+
+  @SuppressWarnings({"rawtypes", "unchecked"})
+  public void moveBattleEntityRelativeToSelf(final ScriptState<? extends BattleEntity27c> entityState, final float x, final float y, final float z, final int ticks) {
+    final BattleEntity27c bent = entityState.innerStruct_00;
+    bent.movementParent_c8 = (ScriptState)entityState;
+    this.FUN_800cdc1c((ScriptState)entityState, 0.0f, 0.0f, 0.0f, x, y, z, 0.0f, ticks);
+    ((ScriptState)entityState).setTempTicker(this::FUN_800cb250);
+  }
+
+  @SuppressWarnings({"rawtypes", "unchecked"})
+  public void moveBattleEntityTo(final ScriptState<? extends BattleEntity27c> entityState, final Vector3f target, final int ticks) {
+    final BattleEntity27c bent = entityState.innerStruct_00;
+    final Vector3f start = new Vector3f(bent.model_148.coord2_14.coord.transfer);
+    bent.movementParent_c8 = null;
+    this.FUN_800cdc1c((ScriptState)entityState, start.x, start.y, start.z, target.x, target.y, target.z, 0.0f, ticks);
+    ((ScriptState)entityState).setTempTicker(this::FUN_800cb250);
+  }
+
+  public boolean isBattleEntityMoving(final BattleEntity27c bent) {
+    return bent.movementTicks_cc > 0;
+  }
+
+  /** Atomically transfers the active slot after the outgoing actor reaches the off-field endpoint. */
+  public void commitPartySwitchHandoff(final PartySwitchPreparation prep) {
+    if(!prep.isReady()) {
+      throw new IllegalStateException("Party switch assets are not ready");
+    }
+
+    prep.offFieldPosition.set(prep.outgoing.model_148.coord2_14.coord.transfer);
+
+    // The menu action is the outgoing character's entire turn. Tick the normal
+    // entity-local temporary modifiers exactly once, then freeze everything else.
+    prep.outgoing.turnFinished();
+    prep.outgoing.recalculateSpeedAndPerHitStats();
+
+    final int outgoingAllSlot = prep.outgoing.allBentSlot_274;
+    this.partySwitchLegacyStates.put(
+      prep.outgoing.charId_272,
+      PartySwitchLegacyState.capture(battleState_8006e398, prep.slot, outgoingAllSlot)
+    );
+    this.deallocatePartyStatusScripts(prep.outgoing);
+
+    final ScriptState<PlayerBattleEntity> outgoingState = prep.outgoingState;
+    outgoingState.clearFlag(FLAG_CURRENT_TURN | FLAG_RELOAD_BATTLE_ACTIONS | FLAG_TAKE_FORCED_TURN);
+    outgoingState.setFlag(FLAG_HIDE | FLAG_NO_SCRIPT);
+    outgoingState.loadScriptFile(this.playerBattleScript_800c66fc, 30);
+    outgoingState.pause();
+    this.releasePartySwitchCombatant(prep.outgoing);
+
+    final PlayerBattleEntity incoming = prep.incoming;
+    final ScriptState<PlayerBattleEntity> incomingState = prep.incomingState;
+    final int combatantIndex = this.addCombatant(incoming.charId_272, prep.slot);
+    if(combatantIndex < 0) {
+      throw new IllegalStateException("No free combatant slot for party switch");
+    }
+
+    final CombatantStruct1a8 combatant = this.getCombatant(combatantIndex);
+    combatant.playerBent = incoming;
+    incoming.combatant_144 = combatant;
+    incoming.combatantIndex_26c = combatantIndex;
+    incoming.model_148.coord2_14.coord.transfer.set(prep.offFieldPosition);
+    incoming.model_148.coord2_14.transforms.rotate.zero();
+
+    incomingState.clearFlag(FLAG_DEAD | FLAG_RELOAD_BATTLE_ACTIONS | FLAG_TAKE_FORCED_TURN);
+    // CURRENT_TURN is a choreography lock here: it prevents the scheduler from
+    // starting another turn until the replacement has finished running in.
+    incomingState.setFlag(FLAG_HIDE | FLAG_NO_SCRIPT | FLAG_CURRENT_TURN);
+    incomingState.setTicker(incoming::bentLoadingTicker);
+    incomingState.setDestructor(incoming::bentDestructor);
+
+    battleState_8006e398.replacePlayer(prep.slot, incomingState);
+
+    final PartySwitchLegacyState legacyState = this.partySwitchLegacyStates.get(incoming.charId_272);
+    if(legacyState != null) {
+      legacyState.restore(battleState_8006e398, prep.slot, incoming.allBentSlot_274);
+    } else {
+      PartySwitchLegacyState.initialize(incoming).restore(battleState_8006e398, prep.slot, incoming.allBentSlot_274);
+    }
+
+    this.combatantTmdAndAnimLoadedCallback(prep.modelFiles(), combatant, false);
+    this.loadCombatantTim(combatant, prep.textureFile());
+    this.attackAnimationsLoaded(prep.attackFiles(), combatant, false, prep.slot);
+    this.charSoundEffectsLoaded(prep.soundFiles(), incoming);
+    incoming.bentLoadingTicker(incomingState, incoming);
+
+    if(prep.firstEntry) {
+      for(final Equipment equipment : incoming.equipment_11e.values()) {
+        equipment.applyEffect(incoming);
+      }
+    }
+
+    this.dragoonSpells_800c6960.set(prep.slot, this.buildDragoonSpells(incoming.character));
+    battlePreloadedEntities_1f8003f4.dragoonAdditionHits_38.set(prep.slot, incoming.character.getDragoonAddition());
+
+    battleState_8006e398.cacheLivingBents();
+    this.hud.refreshCharacterDisplay();
+    EVENTS.postEvent(new PlayerBattleSlotChangedEvent(this, prep.slot, prep.outgoing, incoming));
+  }
+
+  public void finishPartySwitch(final PartySwitchPreparation prep) {
+    prep.incoming.turnValue_4c = 0;
+    prep.incomingState.clearFlag(FLAG_CURRENT_TURN | FLAG_HIDE | FLAG_NO_SCRIPT | FLAG_RELOAD_BATTLE_ACTIONS | FLAG_TAKE_FORCED_TURN);
+    prep.incomingState.loadScriptFile(this.playerBattleScript_800c66fc, 31);
+    prep.incomingState.resume();
+
+    this.restorePlayerBattleAnimation(prep.incoming);
+    battleState_8006e398.cacheLivingBents();
+    this.hud.refreshCharacterDisplay();
+  }
+
+  public void restorePlayerBattleAnimation(final PlayerBattleEntity player) {
+    final VitalsStat hp = player.stats.getStat(HP_STAT.get());
+    final int animation;
+    final boolean loop;
+
+    if(player.getState().hasFlag(FLAG_DEAD) || (player.status_0e & 0x10) != 0) {
+      animation = 0xe;
+      loop = false;
+    } else if(hp.getCurrent() <= hp.getMax() / 4) {
+      animation = 0xb;
+      loop = true;
+    } else if((player.status_0e & 0x40) != 0) {
+      animation = 0xa;
+      loop = true;
+    } else {
+      animation = 0;
+      loop = true;
+    }
+
+    this.setBattleEntityAnimation(player.getState(), animation);
+    if(loop) {
+      player.getState().clearFlag(FLAG_ANIMATE_ONCE);
+    } else {
+      player.getState().setFlag(FLAG_ANIMATE_ONCE);
+    }
+  }
+
+  private void deallocatePartyStatusScripts(final PlayerBattleEntity player) {
+    for(int i = 0; i < SCRIPTS.count(); i++) {
+      final ScriptState<?> state = SCRIPTS.getState(i);
+      if(state == null || state == player.getState() || state.callStackDepth() == 0) {
+        continue;
+      }
+
+      if(!(state.innerStruct_00 instanceof EffectManagerData6c<?>)) {
+        continue;
+      }
+
+      if(state.frame().file == this.playerBattleScript_800c66fc && state.getStor(28) == player.getState().index) {
+        state.deallocateWithChildren();
+      }
+    }
+  }
+
+  private void releasePartySwitchCombatant(final PlayerBattleEntity player) {
+    if(player.soundFile != null && player.soundFile != player.regularSoundFile) {
+      this.unloadBentSoundFile(player.soundFile);
+    }
+    if(player.regularSoundFile != null) {
+      this.unloadBentSoundFile(player.regularSoundFile);
+    }
+    player.soundFile = null;
+    player.regularSoundFile = null;
+
+    if(player.combatant_144 != null && player.combatantIndex_26c >= 0) {
+      this.deallocateCombatant(player.combatant_144);
+      this.removeCombatant(player.combatantIndex_26c);
+    }
+
+    player.model_148.deleteModelParts();
+    player.combatant_144 = null;
+    player.combatantIndex_26c = -1;
+  }
+
+  private List<PlayerBattleEntity> getAllBattlePartyPlayers() {
+    final List<PlayerBattleEntity> players = new ArrayList<>();
+    for(final ScriptState<PlayerBattleEntity> playerState : battleState_8006e398.playerBents_e40) {
+      players.add(playerState.innerStruct_00);
+    }
+    for(final ScriptState<PlayerBattleEntity> playerState : this.partySwitchPlayers.values()) {
+      if(!players.contains(playerState.innerStruct_00)) {
+        players.add(playerState.innerStruct_00);
+      }
+    }
+    return players;
+  }
+
+  private void deallocateBenchedPartySwitchPlayers() {
+    for(final ScriptState<PlayerBattleEntity> playerState : this.partySwitchPlayers.values()) {
+      if(playerState.innerStruct_00.typeBentSlot_276 < 0) {
+        playerState.setDestructor(null);
+        playerState.deallocate();
+      }
+    }
+    this.partySwitchPlayers.clear();
+    this.partySwitchLegacyStates.clear();
   }
 
   @Method(0x800f1aa8L)

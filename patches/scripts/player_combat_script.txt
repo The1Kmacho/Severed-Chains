@@ -28,8 +28,8 @@ entrypoint :ENTRYPOINT_26_NOOP
 entrypoint :ENTRYPOINT_27_NOOP
 entrypoint :ENTRYPOINT_28_NOOP
 entrypoint :ENTRYPOINT_29_NOOP
-entrypoint :ENTRYPOINT_30_NOOP
-entrypoint :ENTRYPOINT_31_NOOP
+entrypoint :ENTRYPOINT_30_PARTY_SWITCH_BENCH
+entrypoint :ENTRYPOINT_31_PARTY_SWITCH_IN
 
 
 
@@ -5898,9 +5898,29 @@ ENTRYPOINT_26_NOOP:
 ENTRYPOINT_27_NOOP:
 ENTRYPOINT_28_NOOP:
 ENTRYPOINT_29_NOOP:
-ENTRYPOINT_30_NOOP:
-ENTRYPOINT_31_NOOP:
 consume
+
+
+; Mid-battle party switching keeps benched characters out of INIT_PLAYER so
+; shared battle globals are never reset.
+ENTRYPOINT_30_PARTY_SWITCH_BENCH:
+jmp inl[:MAIN_LOOP]
+
+
+; Rebuild only character-local presentation/status state after a reserve model
+; has been attached to the active slot, then resume the normal turn loop.
+ENTRYPOINT_31_PARTY_SWITCH_IN:
+mov stor[0], stor[28] ; source, dest
+call Battle::scriptGetBentSlot, stor[0], stor[9], 0x0 ; bentIndex, allBentSlot, mode
+add 0x81, stor[9] ; status_384 battle var index
+gosub inl[:LABEL_438] ; reconstruct persistent status visuals without resetting duration
+call Battle::scriptGetBentStat, stor[0], FOOT_MODEL_PART, inl[:PARTY_SWITCH_FOOT_MODEL_PART_INDEX]
+call Battle::scriptAttachShadowToBentModelPart, stor[0], inl[:PARTY_SWITCH_FOOT_MODEL_PART_INDEX]
+gosub inl[:SET_IDLE_ANIMATION]
+jmp inl[:MAIN_LOOP]
+
+PARTY_SWITCH_FOOT_MODEL_PART_INDEX:
+data 0
 
 
 

@@ -8,6 +8,9 @@ import legend.game.characters.UnaryStatMod;
 import legend.game.characters.UnaryStatModConfig;
 import legend.game.characters.VitalsStat;
 import legend.game.combat.Battle;
+import legend.game.combat.ui.BattleAction;
+import legend.game.combat.ui.GatherBattleActionsEvent;
+import legend.game.combat.ui.RegisterBattleActionsEvent;
 import legend.game.combat.SEffe;
 import legend.game.combat.bent.AttackEvent;
 import legend.game.combat.bent.AttackSpecialEffectEvent;
@@ -19,6 +22,7 @@ import legend.game.combat.effects.GenericAttachment1c;
 import legend.game.combat.effects.GuardEffect06;
 import legend.gameplayoverhaul.effects.CombatImpactEffect;
 import legend.gameplayoverhaul.effects.DragoonAuraEffect;
+import legend.gameplayoverhaul.battleactions.SwitchPartyBattleAction;
 import legend.game.combat.types.AttackType;
 import legend.game.modding.events.battle.BattleEffectDisplayEvent;
 import legend.game.modding.events.battle.ArcherSpEvent;
@@ -28,6 +32,8 @@ import legend.game.modding.events.battle.BattleIntroCameraEvent;
 import legend.game.modding.events.battle.BattleStartedEvent;
 import legend.game.modding.events.battle.CombatantModelLoadedEvent;
 import legend.game.modding.events.battle.PlayerAttackPreparedEvent;
+import legend.game.modding.events.battle.PlayerBattleSlotChangedEvent;
+import legend.game.modding.events.battle.PostBattleXpDistributionEvent;
 import legend.game.modding.events.battle.GuardUsedEvent;
 import legend.game.modding.events.battle.IncomingAttackCueEvent;
 import legend.game.modding.events.characters.AdditionDescriptionEvent;
@@ -42,12 +48,17 @@ import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.legendofdragoon.modloader.Mod;
 import org.legendofdragoon.modloader.events.EventListener;
+import org.legendofdragoon.modloader.registries.Registrar;
+import org.legendofdragoon.modloader.registries.RegistryDelegate;
 import org.legendofdragoon.modloader.registries.RegistryId;
 import org.joml.Matrix3f;
 import org.joml.Vector3f;
 
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HashSet;
+import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -71,6 +82,11 @@ public final class GameplayOverhaulMod {
 
   private static final Logger LOGGER = LogManager.getFormatterLogger(GameplayOverhaulMod.class);
 
+  private static final Registrar<BattleAction, RegisterBattleActionsEvent> BATTLE_ACTION_REGISTRAR =
+    new Registrar<>(REGISTRIES.battleActions, MOD_ID);
+  public static final RegistryDelegate<BattleAction> SWITCH_PARTY =
+    BATTLE_ACTION_REGISTRAR.register("switch_party", SwitchPartyBattleAction::new);
+
   private static final int PARRY_WINDOW_TICKS = 4;
   private static final int DEFAULT_PARRY_CUE_TICKS = 18;
   private static final int GUARD_ANIMATION_INDEX = 5;
@@ -84,6 +100,13 @@ public final class GameplayOverhaulMod {
   private static final Map<MonsterBattleEntity, Integer> BREAK_GAUGE = new HashMap<>();
   private static final Map<Integer, RegistryId> LAST_COMPLETED_ADDITIONS = new HashMap<>();
   private static final Map<PlayerBattleEntity, ScriptState<?>> DRAGOON_AURAS = new HashMap<>();
+
+  private static final Map<Integer, LinkedHashSet<Integer>> PARTY_SLOT_MEMBERS = new LinkedHashMap<>();
+  private static final Map<Integer, Map<Integer, Integer>> PARTY_SLOT_TURNS = new LinkedHashMap<>();
+  private static final Set<Integer> CURRENT_BENCH = new HashSet<>();
+  private static final Set<Integer> XP_SURVIVORS = new HashSet<>();
+  private static boolean partySwitched;
+  private static int startingPartySlots;
 
   private static final Matrix3f SAVED_BATTLE_LIGHT_COLOUR = new Matrix3f();
   private static final Vector3f SAVED_BATTLE_AMBIENT = new Vector3f();
@@ -169,6 +192,18 @@ public final class GameplayOverhaulMod {
   );
 
   public GameplayOverhaulMod() { }
+
+  @EventListener
+  public static void registerBattleActions(final RegisterBattleActionsEvent event) {
+    BATTLE_ACTION_REGISTRAR.registryEvent(event);
+  }
+
+  @EventListener
+  public static void gatherBattleActions(final GatherBattleActionsEvent event) {
+    if(SwitchPartyBattleAction.hasEligibleReplacement(event.battle, event.player)) {
+      event.actions.put(SWITCH_PARTY.get(), 950);
+    }
+  }
 
   @EventListener
   public static void inputPressed(final InputPressedEvent event) {
@@ -298,6 +333,11 @@ public final class GameplayOverhaulMod {
 
   @EventListener
   public static void battleEntityTurn(final BattleEntityTurnEvent<?> event) {
+    if(event.bent instanceof final PlayerBattleEntity player && player.typeBentSlot_276 >= 0) {
+      PARTY_SLOT_MEMBERS.computeIfAbsent(player.typeBentSlot_276, ignored -> new LinkedHashSet<>()).add(player.charId_272);
+      PARTY_SLOT_TURNS.computeIfAbsent(player.typeBentSlot_276, ignored -> new LinkedHashMap<>()).merge(player.charId_272, 1, Integer::sum);
+    }
+
     if(!ACTIVE_PARRY_CUES.isEmpty()) {
       cancelParryCues();
     } else if(parryCameraActive) {
@@ -313,6 +353,12 @@ public final class GameplayOverhaulMod {
 
   @EventListener
   public static void battleEnded(final BattleEndedEvent event) {
+    XP_SURVIVORS.clear();
+    XP_SURVIVORS.addAll(CURRENT_BENCH);
+    for(final var playerState : battleState_8006e398.alivePlayerBents_eac) {
+      XP_SURVIVORS.add(playerState.innerStruct_00.charId_272);
+    }
+
     cancelParryCues();
     if(activeArcherPlayer != null) {
       clearArcherAdditionState();
@@ -327,8 +373,125 @@ public final class GameplayOverhaulMod {
 
   @EventListener
   public static void battleStarted(final BattleStartedEvent event) {
+    PARTY_SLOT_MEMBERS.clear();
+    PARTY_SLOT_TURNS.clear();
+    CURRENT_BENCH.clear();
+    XP_SURVIVORS.clear();
+    partySwitched = false;
+    startingPartySlots = battleState_8006e398.getPlayerCount();
+
+    for(int slot = 0; slot < startingPartySlots; slot++) {
+      final int charId = battleState_8006e398.playerBents_e40.get(slot).innerStruct_00.charId_272;
+      PARTY_SLOT_MEMBERS.computeIfAbsent(slot, ignored -> new LinkedHashSet<>()).add(charId);
+    }
+
     polishBattleLighting();
     updateDragoonAuras();
+  }
+
+  @EventListener
+  public static void playerBattleSlotChanged(final PlayerBattleSlotChangedEvent event) {
+    partySwitched = true;
+    PARTY_SLOT_MEMBERS.computeIfAbsent(event.slot, ignored -> new LinkedHashSet<>()).add(event.outgoing.charId_272);
+    PARTY_SLOT_MEMBERS.get(event.slot).add(event.incoming.charId_272);
+    CURRENT_BENCH.add(event.outgoing.charId_272);
+    CURRENT_BENCH.remove(event.incoming.charId_272);
+  }
+
+  @EventListener
+  public static void postBattleXpDistribution(final PostBattleXpDistributionEvent event) {
+    if(!partySwitched || startingPartySlots <= 0) {
+      clearPartySwitchXpState();
+      return;
+    }
+
+    final Set<Integer> participants = new HashSet<>();
+    for(final Set<Integer> members : PARTY_SLOT_MEMBERS.values()) {
+      participants.addAll(members);
+    }
+
+    // Participants replace retail primary/secondary allocation; uninvolved
+    // reserves keep the configured secondary-character XP.
+    for(final int charId : participants) {
+      event.remove(gameState_800babc8.charData_32c.get(charId));
+    }
+
+    final List<Integer> eligibleSlots = new ArrayList<>();
+    for(int slot = 0; slot < startingPartySlots; slot++) {
+      final Set<Integer> members = PARTY_SLOT_MEMBERS.getOrDefault(slot, new LinkedHashSet<>());
+      boolean hasSurvivor = false;
+      for(final int charId : members) {
+        if(XP_SURVIVORS.contains(charId)) {
+          hasSurvivor = true;
+          break;
+        }
+      }
+      if(hasSurvivor) {
+        eligibleSlots.add(slot);
+      }
+    }
+
+    if(eligibleSlots.isEmpty()) {
+      clearPartySwitchXpState();
+      return;
+    }
+
+    // Preserve exactly one retail primary XP pool for the encounter.
+    final int baseSlotXp = event.totalXp / eligibleSlots.size();
+    int slotRemainder = event.totalXp % eligibleSlots.size();
+
+    for(final int slot : eligibleSlots) {
+      final int slotXp = baseSlotXp + (slotRemainder-- > 0 ? 1 : 0);
+      final LinkedHashSet<Integer> members = PARTY_SLOT_MEMBERS.getOrDefault(slot, new LinkedHashSet<>());
+      final Map<Integer, Integer> turns = PARTY_SLOT_TURNS.getOrDefault(slot, Map.of());
+
+      final List<Integer> survivors = new ArrayList<>();
+      int totalTurns = 0;
+      for(final int charId : members) {
+        if(XP_SURVIVORS.contains(charId)) {
+          survivors.add(charId);
+          totalTurns += turns.getOrDefault(charId, 0);
+        }
+      }
+
+      if(survivors.isEmpty()) {
+        continue;
+      }
+
+      if(totalTurns <= 0) {
+        event.add(gameState_800babc8.charData_32c.get(survivors.getFirst()), slotXp);
+        continue;
+      }
+
+      int distributed = 0;
+      int remainderTarget = survivors.getFirst();
+      for(final int charId : survivors) {
+        final int weight = turns.getOrDefault(charId, 0);
+        if(weight <= 0) {
+          continue;
+        }
+
+        remainderTarget = charId;
+        final int xp = slotXp * weight / totalTurns;
+        distributed += xp;
+        event.add(gameState_800babc8.charData_32c.get(charId), xp);
+      }
+
+      if(distributed < slotXp) {
+        event.add(gameState_800babc8.charData_32c.get(remainderTarget), slotXp - distributed);
+      }
+    }
+
+    clearPartySwitchXpState();
+  }
+
+  private static void clearPartySwitchXpState() {
+    PARTY_SLOT_MEMBERS.clear();
+    PARTY_SLOT_TURNS.clear();
+    CURRENT_BENCH.clear();
+    XP_SURVIVORS.clear();
+    partySwitched = false;
+    startingPartySlots = 0;
   }
 
   @EventListener
