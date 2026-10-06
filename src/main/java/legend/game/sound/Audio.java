@@ -894,6 +894,10 @@ public final class Audio {
     playSound(menuSoundFile, soundIndex, initialDelay, repeatDelay);
   }
 
+  public static void stopMenuSound(final int soundIndex, final int mode) {
+    stopSound(menuSoundFile, soundIndex, mode);
+  }
+
   @Method(0x8002c984L)
   public static int playXaAudio(final int xaLoadingStage, final int xaArchiveIndex, final int xaFileIndex) {
     //LAB_8002c9f0

@@ -446,6 +446,25 @@ public class BattleStateEf4 {
     }
   }
 
+  /**
+   * Replaces one active player slot without reordering battle-facing lists.
+   * The outgoing state is intentionally left allocated for reserve-state caching.
+   */
+  public ScriptState<PlayerBattleEntity> replacePlayer(final int slot, final ScriptState<PlayerBattleEntity> replacement) {
+    final ScriptState<PlayerBattleEntity> previous = this.playerBents_e40.get(slot);
+    final PlayerBattleEntity previousBent = previous.innerStruct_00;
+    final int allSlot = previousBent.allBentSlot_274;
+
+    replacement.innerStruct_00.typeBentSlot_276 = slot;
+    replacement.innerStruct_00.allBentSlot_274 = allSlot;
+    this.playerBents_e40.set(slot, replacement);
+    this.allBents_e0c.set(allSlot, replacement);
+
+    previousBent.typeBentSlot_276 = -1;
+    previousBent.allBentSlot_274 = -1;
+    return previous;
+  }
+
   public void addGenericBent(final ScriptState<? extends BattleEntity27c> state) {
     state.innerStruct_00.allBentSlot_274 = this.allBents_e0c.size();
     this.allBents_e0c.add(state);

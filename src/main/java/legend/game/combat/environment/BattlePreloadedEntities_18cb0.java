@@ -36,7 +36,7 @@ public class BattlePreloadedEntities_18cb0 {
     }
 
     //LAB_800c74fc
-    final CharacterData2c character = gameState_800babc8.getCharacterBySlot(charSlot);
+    final CharacterData2c character = battleState_8006e398.playerBents_e40.get(charSlot).innerStruct_00.character;
     final CharacterAdditionInfo additionInfo = character.getAdditionInfo(character.selectedAddition_19);
     return REGISTRIES.additions.getEntry(character.selectedAddition_19).get().getHit(character, additionInfo, hitNum);
   }
@@ -47,7 +47,7 @@ public class BattlePreloadedEntities_18cb0 {
     }
 
     //LAB_800c74fc
-    final CharacterData2c character = gameState_800babc8.getCharacterBySlot(charSlot);
+    final CharacterData2c character = battleState_8006e398.playerBents_e40.get(charSlot).innerStruct_00.character;
     final CharacterAdditionInfo additionInfo = character.getAdditionInfo(character.selectedAddition_19);
     return REGISTRIES.additions.getEntry(character.selectedAddition_19).get().getHitCount(character, additionInfo);
   }

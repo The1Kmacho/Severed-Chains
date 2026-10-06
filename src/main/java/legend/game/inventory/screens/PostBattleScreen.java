@@ -22,6 +22,7 @@ import legend.game.inventory.SpellStats0c;
 import legend.game.inventory.WhichMenu;
 import legend.game.modding.coremod.CoreMod;
 import legend.game.modding.events.characters.PostAdditionLevelUpEvent;
+import legend.game.modding.events.battle.PostBattleXpDistributionEvent;
 import legend.game.textures.TextureAtlasIcon;
 import legend.game.types.Renderable58;
 import legend.core.renderer.Translucency;
@@ -160,6 +161,8 @@ public class PostBattleScreen extends MenuScreen {
             final int secondaryCharIndex = secondaryCharIds_800bdbf8.getInt(secondaryCharSlot);
             this.pendingXp_8011e180.put(gameState_800babc8.charData_32c.get(secondaryCharIndex), (int)(MathHelper.safeDiv(totalXpFromCombat_800bc95c, xpDivisor) * secondaryCharXpMultiplier));
           }
+
+          EVENTS.postEvent(new PostBattleXpDistributionEvent(totalXpFromCombat_800bc95c, this.pendingXp_8011e180));
 
           // Level up additions
           for(int charIndex = 0; charIndex < gameState_800babc8.charData_32c.size(); charIndex++) {
