@@ -23,6 +23,7 @@ import legend.game.scripting.ScriptState;
 import legend.game.textures.TextureAtlasIcon;
 import legend.game.ui.UiBox;
 import legend.gameplayoverhaul.battleactions.SwitchPartyBattleAction;
+import legend.gameplayoverhaul.camera.BattleCameraDirector;
 import legend.gameplayoverhaul.rows.BattleRows;
 import legend.lodmod.LodMod;
 
@@ -149,6 +150,7 @@ public final class PartySwitchListMenu extends ListMenu {
     switch(this.phase) {
       case 0 -> {
         if(this.preparation.hasFailed()) {
+          BattleCameraDirector.finishActionCamera(this.player_08);
           this.player_08.getState().setFlag(BattleEntity27c.FLAG_RELOAD_BATTLE_ACTIONS);
           this.transitionStarted = false;
           this.menuState_00 = 9;
@@ -164,6 +166,7 @@ public final class PartySwitchListMenu extends ListMenu {
           return;
         }
 
+        BattleCameraDirector.startSwitchShot(this.preparation);
         this.preparation.outgoingState.clearFlag(BattleEntity27c.FLAG_ANIMATE_ONCE);
         this.preparation.outgoing.model_148.coord2_14.transforms.rotate.y = legend.core.MathHelper.psxDegToRad(0xc00);
         this.phaseTicks = RUN_DELAY_TICKS;
@@ -200,6 +203,7 @@ public final class PartySwitchListMenu extends ListMenu {
           return;
         }
 
+        BattleCameraDirector.focusSwitchIncoming(this.preparation);
         this.preparation.incomingState.clearFlag(BattleEntity27c.FLAG_ANIMATE_ONCE);
         this.preparation.incoming.model_148.coord2_14.transforms.rotate.y = legend.core.MathHelper.psxDegToRad(0x400);
 
@@ -221,6 +225,7 @@ public final class PartySwitchListMenu extends ListMenu {
 
         this.stopRunEffects();
         battle.finishPartySwitch(this.preparation);
+        BattleCameraDirector.finishActionCamera(this.preparation.incoming);
         this.transitionStarted = false;
         this.menuState_00 = 9;
         super.tick();

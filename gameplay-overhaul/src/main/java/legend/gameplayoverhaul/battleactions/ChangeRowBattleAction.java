@@ -6,6 +6,7 @@ import legend.game.combat.bent.BattleEntity27c;
 import legend.game.combat.bent.PlayerBattleEntity;
 import legend.game.combat.ui.BattleActionTickFlowControl;
 import legend.game.combat.ui.BattleActionUseFlowControl;
+import legend.gameplayoverhaul.camera.BattleCameraDirector;
 import legend.gameplayoverhaul.rows.BattleRows;
 import legend.lodmod.battleactions.SeveredBattleAction;
 import org.joml.Vector3f;
@@ -47,6 +48,7 @@ public final class ChangeRowBattleAction extends SeveredBattleAction {
     this.actor = player;
     this.targetBackRow = !BattleRows.isBackRow(player.charId_272);
     this.target.set(BattleRows.prepareToggleTarget(player));
+    BattleCameraDirector.startRowShot(player, this.target);
     this.originalRotation = player.model_148.coord2_14.transforms.rotate.y;
     this.phase = 0;
     this.phaseTicks = 0;
@@ -95,6 +97,7 @@ public final class ChangeRowBattleAction extends SeveredBattleAction {
         battle.hud.showEffectNotification(this.targetBackRow ? "BACK ROW" : "FRONT ROW");
         player.model_148.coord2_14.transforms.rotate.y = this.originalRotation;
         battle.restorePlayerBattleAnimation(player);
+        BattleCameraDirector.finishActionCamera(player);
 
         this.actor = null;
         this.phase = 0;
