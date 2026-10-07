@@ -261,6 +261,7 @@ public final class GameplayOverhaulMod {
   @EventListener
   public static void playerAttackPrepared(final PlayerAttackPreparedEvent event) {
     final PlayerBattleEntity player = event.player;
+    BattleCameraDirector.onPlayerAttackPrepared(player, event.waitTicks);
     if(player.isDragoon() || !player.character.isArcher() || player.character.selectedAddition_19 == null) {
       return;
     }
@@ -337,11 +338,14 @@ public final class GameplayOverhaulMod {
     );
     ACTIVE_PARRY_CUES.add(cue);
 
-    // Even short cues remain as timing observations so a later use can become
-    // parryable if the measured attack really does provide enough lead time.
+    // Standard physical attacks get a two-subject action shot. Parryable
+    // attacks already have the more specialized counter camera below.
     if(!parryable) {
+      BattleCameraDirector.onIncomingEnemyAttack(attacker, defender, expectedImpactTicks);
       return;
     }
+
+    BattleCameraDirector.releaseEnemyCamera(attacker);
 
     cue.reticle = new AdditionOverlaysEffect44(
       expectedImpactTicks,
