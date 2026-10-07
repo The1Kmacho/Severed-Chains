@@ -578,9 +578,8 @@ public final class BattleCameraDirector {
     }
 
     // Command selection is a close character portrait rather than a full-body
-    // tactical shot. Sit mostly side-on, with a slight rear three-quarter bias
-    // so the camera can get inside the party formation instead of framing the
-    // neighbouring character in front of the active one.
+    // tactical shot. Stay mostly side-on, but use the model's actual facing to
+    // sit in its front hemisphere and keep the face readable.
     final Vector3f portraitDirection = portraitDirection(actor, forward);
 
     final float halfHeight = subjectHalfHeight(actor);

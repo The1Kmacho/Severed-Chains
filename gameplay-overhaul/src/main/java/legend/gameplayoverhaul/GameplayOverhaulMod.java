@@ -168,7 +168,6 @@ public final class GameplayOverhaulMod {
   private static final Vector3f savedCameraRay = new Vector3f();
   private static float parryCameraStartDistance;
   private static float parryCameraBaseDistance;
-  private static float parryCameraFocusDistance;
   private static boolean parryCameraCueResolved;
   private static boolean parryCameraActive;
 
@@ -1176,12 +1175,6 @@ public final class GameplayOverhaulMod {
       return;
     }
 
-    // The same approach interpolation drives both framing and zoom. Long
-    // approaches stay a little wider, while close melee can push in harder.
-    parryCameraFocusDistance = java.lang.Math.max(
-      650.0f,
-      parryCameraBaseDistance * (parryCameraStartDistance > 2400.0f ? 0.58f : 0.46f)
-    );
     parryCameraCueResolved = false;
     parryCameraActive = true;
 
