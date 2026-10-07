@@ -24,6 +24,7 @@ import legend.gameplayoverhaul.effects.CombatImpactEffect;
 import legend.gameplayoverhaul.effects.DragoonAuraEffect;
 import legend.gameplayoverhaul.battleactions.ChangeRowBattleAction;
 import legend.gameplayoverhaul.battleactions.SwitchPartyBattleAction;
+import legend.gameplayoverhaul.camera.BattleCameraDirector;
 import legend.gameplayoverhaul.rows.BattleRows;
 import legend.game.combat.types.AttackType;
 import legend.game.modding.events.battle.BattleEffectDisplayEvent;
@@ -359,6 +360,8 @@ public final class GameplayOverhaulMod {
 
   @EventListener
   public static void battleEntityTurn(final BattleEntityTurnEvent<?> event) {
+    BattleCameraDirector.onTurn(event.bent);
+
     if(event.bent instanceof final PlayerBattleEntity player && player.typeBentSlot_276 >= 0) {
       PARTY_SLOT_MEMBERS.computeIfAbsent(player.typeBentSlot_276, ignored -> new LinkedHashSet<>()).add(player.charId_272);
       PARTY_SLOT_TURNS.computeIfAbsent(player.typeBentSlot_276, ignored -> new LinkedHashMap<>()).merge(player.charId_272, 1, Integer::sum);
@@ -379,6 +382,8 @@ public final class GameplayOverhaulMod {
 
   @EventListener
   public static void battleEnded(final BattleEndedEvent event) {
+    BattleCameraDirector.endBattle();
+
     XP_SURVIVORS.clear();
     XP_SURVIVORS.addAll(CURRENT_BENCH);
     for(final var playerState : battleState_8006e398.alivePlayerBents_eac) {
