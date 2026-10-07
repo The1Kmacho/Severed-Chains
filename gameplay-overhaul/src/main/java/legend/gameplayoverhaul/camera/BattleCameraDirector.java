@@ -47,15 +47,14 @@ public final class BattleCameraDirector {
   private static final float COMMAND_PORTRAIT_DISTANCE_SCALE = 1.55f;
   private static final float COMMAND_PORTRAIT_MIN_DISTANCE = 1400.0f;
   private static final float COMMAND_PORTRAIT_MAX_DISTANCE = 2800.0f;
-  private static final float COMMAND_LOOK_HEIGHT_FACTOR = 1.08f;
-  private static final float COMMAND_CAMERA_HEIGHT = -0.08f;
+  private static final float COMMAND_LOOK_HEIGHT_FACTOR = 1.18f;
+  private static final float COMMAND_CAMERA_HEIGHT = -0.10f;
   private static final float PORTRAIT_FRONT_BIAS = 0.48f;
   private static final float ITEM_LOOK_HEIGHT_FACTOR = 1.18f;
   private static final float ITEM_CAMERA_HEIGHT = -0.14f;
   private static final float GUARD_LOOK_HEIGHT_FACTOR = 1.08f;
   private static final float GUARD_CAMERA_HEIGHT = -0.10f;
 
-  private static final int ENEMY_TURN_HOLD_TICKS = 24;
   private static final int DEFAULT_ATTACK_HANDOFF_TICKS = 120;
   private static final int GUARD_HOLD_TICKS = 30;
   private static final int ESCAPE_HOLD_TICKS = 42;
@@ -68,7 +67,6 @@ public final class BattleCameraDirector {
     COMMAND,
     ATTACK_HANDOFF,
     ENEMY_TURN,
-    ENEMY_ATTACK,
     GUARD,
     ESCAPE,
     ROW,
@@ -81,9 +79,6 @@ public final class BattleCameraDirector {
   private static Mode mode;
   private static PlayerBattleEntity actor;
   private static MonsterBattleEntity enemyActor;
-  private static PlayerBattleEntity enemyDefender;
-  private static boolean enemyAttackAll;
-  private static int enemyAttackTicksRemaining;
   private static int attackHandoffTicksRemaining;
   private static BattleEntity27c itemTarget;
   private static int itemTargetType;
@@ -96,6 +91,9 @@ public final class BattleCameraDirector {
   private static float shotSide;
 
   private static final Vector3f actionAnchor = new Vector3f();
+  private static final Vector3f actionWideViewpoint = new Vector3f();
+  private static final Vector3f actionWideRefpoint = new Vector3f();
+  private static boolean actionWideCaptured;
   private static final Vector3f itemStart = new Vector3f();
   private static final Vector3f baseRay = new Vector3f();
   private static float baseDistance;
@@ -194,43 +192,6 @@ public final class BattleCameraDirector {
     );
   }
 
-  public static void onIncomingEnemyAttack(
-    final MonsterBattleEntity attacker,
-    final PlayerBattleEntity defender,
-    final int suggestedImpactTicks
-  ) {
-    if(mode == Mode.ENEMY_ATTACK && enemyActor == attacker) {
-      if(enemyDefender != defender) {
-        enemyAttackAll = true;
-      }
-      enemyAttackTicksRemaining = java.lang.Math.max(
-        enemyAttackTicksRemaining,
-        java.lang.Math.max(24, suggestedImpactTicks + 24)
-      );
-      return;
-    }
-
-    stopTracker();
-    mode = Mode.ENEMY_ATTACK;
-    enemyActor = attacker;
-    enemyDefender = defender;
-    enemyAttackAll = false;
-    actor = null;
-    ownsCamera = false;
-    modeTicks = 0;
-    enemyAttackTicksRemaining = java.lang.Math.max(24, suggestedImpactTicks + 24);
-    shotSide = (attacker.typeBentSlot_276 & 1) == 0 ? -1.0f : 1.0f;
-
-    tracker = SCRIPTS.allocateScriptState("GameplayOverhaulEnemyAttackCamera", (BattleEntity27c)attacker);
-    tracker.setTicker(BattleCameraDirector::tick);
-  }
-
-  public static void releaseEnemyCamera(final MonsterBattleEntity attacker) {
-    if(enemyActor == attacker && (mode == Mode.ENEMY_TURN || mode == Mode.ENEMY_ATTACK)) {
-      stopTracker();
-    }
-  }
-
   public static void startGuardShot(final PlayerBattleEntity player) {
     start(Mode.GUARD, player);
   }
@@ -238,11 +199,13 @@ public final class BattleCameraDirector {
   public static void startRowShot(final PlayerBattleEntity player, final Vector3f target) {
     start(Mode.ROW, player);
     actionAnchor.set(target);
+    actionWideCaptured = false;
   }
 
   public static void startSwitchShot(final PartySwitchPreparation preparation) {
     start(Mode.SWITCH_OUT, preparation.outgoing);
     actionAnchor.set(preparation.formationPosition);
+    actionWideCaptured = false;
   }
 
   public static void focusSwitchIncoming(final PartySwitchPreparation preparation) {
@@ -327,9 +290,8 @@ public final class BattleCameraDirector {
 
   private static void tick(final ScriptState<BattleEntity27c> state, final BattleEntity27c ignored) {
     if(mode == null
-      || ((mode == Mode.ENEMY_TURN || mode == Mode.ENEMY_ATTACK) && enemyActor == null)
-      || (mode == Mode.ENEMY_ATTACK && enemyDefender == null)
-      || (mode != Mode.ENEMY_TURN && mode != Mode.ENEMY_ATTACK && actor == null)
+      || (mode == Mode.ENEMY_TURN && enemyActor == null)
+      || (mode != Mode.ENEMY_TURN && actor == null)
       || !(currentEngineState_8004dd04 instanceof final Battle battle)) {
       stopTracker(state);
       return;
@@ -371,34 +333,19 @@ public final class BattleCameraDirector {
       }
 
       case ENEMY_TURN -> {
-        // If a retail enemy-action camera starts moving, yield immediately so
-        // the short turn-focus cue never fights the authored attack camera.
-        if(modeTicks > 2 && (battle.camera_800c67f0.flags_11c & (UPDATE_VIEWPOINT | UPDATE_REFPOINT)) != 0) {
+        // Enemy turns should begin from a neutral whole-battlefield view.
+        // The instant retail starts an authored camera move, release ownership.
+        if((battle.camera_800c67f0.flags_11c & (UPDATE_VIEWPOINT | UPDATE_REFPOINT)) != 0) {
           stopTracker(state);
           return;
         }
 
-        if(!buildEnemyTurnShot()) {
-          stopTracker(state);
-          return;
-        }
-
-        applyCamera(battle, TARGET_BLEND);
-        if(modeTicks >= ENEMY_TURN_HOLD_TICKS) {
-          stopTracker(state);
-        }
-      }
-
-      case ENEMY_ATTACK -> {
-        if(!buildEnemyAttackShot()) {
+        if(!buildBattlefieldWideShot()) {
           stopTracker(state);
           return;
         }
 
         applyCamera(battle, ACTION_BLEND);
-        if(--enemyAttackTicksRemaining <= 0) {
-          stopTracker(state);
-        }
       }
 
       case GUARD -> {
@@ -424,10 +371,19 @@ public final class BattleCameraDirector {
       }
 
       case ROW, SWITCH_OUT, SWITCH_IN -> {
-        if(!buildMovementShot(actor, actionAnchor)) {
-          stopTracker(state);
-          return;
+        if(!actionWideCaptured) {
+          if(!buildBattlefieldWideShot()) {
+            stopTracker(state);
+            return;
+          }
+          actionWideViewpoint.set(desiredViewpoint);
+          actionWideRefpoint.set(desiredRefpoint);
+          actionWideCaptured = true;
+        } else {
+          desiredViewpoint.set(actionWideViewpoint);
+          desiredRefpoint.set(actionWideRefpoint);
         }
+
         applyCamera(battle, ACTION_BLEND);
       }
 
@@ -681,7 +637,7 @@ public final class BattleCameraDirector {
 
     desiredRefpoint.set(targetPos);
     final float preferredDistance = targetFramingDistance > 0.0f ? targetFramingDistance : baseDistance;
-    final float distance = subjectDistance(target, preferredDistance, 2050.0f, 5400.0f);
+    final float distance = subjectDistance(target, preferredDistance, 2800.0f, 6200.0f);
     final Vector3f side = rightOf(cameraDirection).mul(0.08f * shotSide);
     cameraDirection.add(side).normalize();
     desiredViewpoint.set(desiredRefpoint).add(cameraRay(cameraDirection).mul(distance));
@@ -717,64 +673,45 @@ public final class BattleCameraDirector {
     return true;
   }
 
-  private static boolean buildEnemyTurnShot() {
-    final Vector3f enemyPos = focusPosition(enemyActor);
+  private static boolean buildBattlefieldWideShot() {
     final GroupFrame party = frameTargets(0);
-    if(party == null) {
+    final GroupFrame enemies = frameTargets(1);
+    if(party == null || enemies == null) {
       return false;
     }
 
-    Vector3f cameraDirection = horizontalDirection(enemyPos, party.center);
-    if(cameraDirection == null) {
+    final Vector3f forward = horizontalDirection(party.center, enemies.center);
+    if(forward == null) {
       return false;
     }
 
-    cameraDirection.add(new Vector3f(rightOf(cameraDirection)).mul(0.08f * shotSide)).normalize();
-    desiredRefpoint.set(enemyPos);
-    final float distance = subjectDistance(enemyActor, baseDistance, 2050.0f, 5400.0f);
-    desiredViewpoint.set(desiredRefpoint).add(cameraRay(cameraDirection).mul(distance));
-    return true;
-  }
+    desiredRefpoint.set(party.center).lerp(enemies.center, 0.5f);
 
-  private static boolean buildEnemyAttackShot() {
-    final Vector3f attackerPos = focusPosition(enemyActor);
-    final Vector3f defenderPos;
-    float groupRadius = 0.0f;
-    float defenderHalfHeight = subjectHalfHeight(enemyDefender);
-
-    if(enemyAttackAll) {
-      final GroupFrame party = frameTargets(0);
-      if(party == null) {
-        return false;
-      }
-      defenderPos = party.center;
-      groupRadius = party.radius;
-      defenderHalfHeight = party.maxHalfHeight;
-    } else {
-      defenderPos = focusPosition(enemyDefender);
-    }
-
-    final Vector3f attackAxis = horizontalDirection(attackerPos, defenderPos);
-    if(attackAxis == null) {
-      return false;
-    }
-
-    desiredRefpoint.set(attackerPos).lerp(defenderPos, 0.5f);
-    final float separation = horizontalDistance(attackerPos, defenderPos);
-    final float maxHalfHeight = java.lang.Math.max(subjectHalfHeight(enemyActor), defenderHalfHeight);
+    final float halfFormationDistance = horizontalDistance(party.center, enemies.center) * 0.5f;
+    final float radius = java.lang.Math.max(
+      halfFormationDistance + party.radius,
+      halfFormationDistance + enemies.radius
+    );
+    final float maxHalfHeight = java.lang.Math.max(party.maxHalfHeight, enemies.maxHalfHeight);
     final float distance = clamp(
       java.lang.Math.max(
-        baseDistance * 1.04f,
-        separation * 1.10f + groupRadius * 1.25f + maxHalfHeight * 2.00f
+        4800.0f,
+        radius * 1.55f + maxHalfHeight * 2.25f
       ),
-      3400.0f,
-      7600.0f
+      4800.0f,
+      8500.0f
     );
 
-    final Vector3f side = rightOf(attackAxis).mul(shotSide)
-      .add(new Vector3f(attackAxis).mul(-0.16f))
+    // Neutral battle overview from the party side, with just enough lateral
+    // angle to retain depth without favoring a specific combatant.
+    final Vector3f cameraDirection = new Vector3f(forward).mul(-1.0f)
+      .add(new Vector3f(rightOf(forward)).mul(0.32f * shotSide))
       .normalize();
-    desiredViewpoint.set(desiredRefpoint).add(cameraRay(side).mul(distance));
+    desiredViewpoint.set(desiredRefpoint).add(
+      new Vector3f(cameraDirection.x, -0.18f, cameraDirection.z)
+        .normalize()
+        .mul(distance)
+    );
     return true;
   }
 
@@ -1052,9 +989,6 @@ public final class BattleCameraDirector {
     mode = null;
     actor = null;
     enemyActor = null;
-    enemyDefender = null;
-    enemyAttackAll = false;
-    enemyAttackTicksRemaining = 0;
     attackHandoffTicksRemaining = 0;
     itemTarget = null;
     itemTargetType = 0;
@@ -1064,6 +998,7 @@ public final class BattleCameraDirector {
     sawCommandMenu = false;
     ownsCamera = false;
     modeTicks = 0;
+    actionWideCaptured = false;
     targetFramingDistance = 0.0f;
   }
 

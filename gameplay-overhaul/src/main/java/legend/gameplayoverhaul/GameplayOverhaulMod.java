@@ -307,12 +307,8 @@ public final class GameplayOverhaulMod {
       return;
     }
 
-    // Hit-check-only attacks arrive too late for a fair parry window, but the
-    // camera still knows the real defender at this point. Use that information
-    // as a short two-subject fallback instead of leaving the enemy-only turn
-    // portrait on screen.
+    // Hit-check-only attacks arrive too late for a fair parry window.
     if(event.suggestedImpactTicks <= 0) {
-      BattleCameraDirector.onIncomingEnemyAttack(attacker, defender, 12);
       return;
     }
 
@@ -340,14 +336,9 @@ public final class GameplayOverhaulMod {
     );
     ACTIVE_PARRY_CUES.add(cue);
 
-    // Standard physical attacks get a two-subject action shot. Parryable
-    // attacks already have the more specialized counter camera below.
     if(!parryable) {
-      BattleCameraDirector.onIncomingEnemyAttack(attacker, defender, expectedImpactTicks);
       return;
     }
-
-    BattleCameraDirector.releaseEnemyCamera(attacker);
 
     cue.reticle = new AdditionOverlaysEffect44(
       expectedImpactTicks,
@@ -361,9 +352,9 @@ public final class GameplayOverhaulMod {
       cue.reticle
     );
 
-    if(!parryCameraActive) {
-      focusParryCamera(attacker, defender);
-    }
+    // Keep the parry timing overlay, but leave camera ownership to retail.
+    // The cinematic director already steps back to a neutral battlefield view
+    // at enemy turn start and yields when an authored enemy camera begins.
   }
 
   @EventListener
