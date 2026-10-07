@@ -23,6 +23,7 @@ import legend.game.scripting.ScriptState;
 import legend.game.textures.TextureAtlasIcon;
 import legend.game.ui.UiBox;
 import legend.gameplayoverhaul.battleactions.SwitchPartyBattleAction;
+import legend.gameplayoverhaul.rows.BattleRows;
 import legend.lodmod.LodMod;
 
 import java.util.ArrayList;
@@ -203,7 +204,11 @@ public final class PartySwitchListMenu extends ListMenu {
         this.preparation.incoming.model_148.coord2_14.transforms.rotate.y = legend.core.MathHelper.psxDegToRad(0x400);
 
         this.startRunEffects(this.preparation.incomingState, this.preparation.incoming, 8.0f);
-        battle.moveBattleEntityTo(this.preparation.incomingState, this.preparation.formationPosition, RUN_TICKS);
+        battle.moveBattleEntityTo(
+          this.preparation.incomingState,
+          BattleRows.getBattlePosition(this.preparation.slot, this.preparation.incoming.charId_272, this.preparation.formationPosition),
+          RUN_TICKS
+        );
         this.phaseTicks = 0;
         this.phase = 4;
       }

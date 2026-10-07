@@ -3,6 +3,8 @@ package legend.game.combat.ui;
 public enum BattleActionUseFlowControl {
   /** Keep the player combat script paused while menuing */
   PAUSE_SCRIPT,
+  /** Keep the player combat script paused while this action's tick method runs. */
+  PAUSE_ACTION,
   /** Allow the player combat script to continue once menuing is finished */
   CONTINUE_SCRIPT,
   /** Action cannot be used */
