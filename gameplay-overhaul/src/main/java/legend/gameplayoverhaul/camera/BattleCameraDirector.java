@@ -175,9 +175,12 @@ public final class BattleCameraDirector {
 
     final Vector3f actorPos = focusPosition(actor);
     final Vector3f targetPos = focusPosition(targetState.innerStruct_00);
-    final Vector3f forward = horizontalDirection(actorPos, targetPos);
+    Vector3f forward = horizontalDirection(actorPos, targetPos);
     if(forward == null) {
-      return false;
+      final GroupFrame enemies = frameTargets(1);
+      if(enemies == null || (forward = horizontalDirection(actorPos, enemies.center)) == null) {
+        return false;
+      }
     }
 
     desiredRefpoint.set(actorPos).lerp(targetPos, 0.52f);
@@ -198,9 +201,12 @@ public final class BattleCameraDirector {
       return false;
     }
 
-    final Vector3f forward = horizontalDirection(actorPos, group.center);
+    Vector3f forward = horizontalDirection(actorPos, group.center);
     if(forward == null) {
-      return false;
+      final GroupFrame enemies = frameTargets(1);
+      if(enemies == null || (forward = horizontalDirection(actorPos, enemies.center)) == null) {
+        return false;
+      }
     }
 
     desiredRefpoint.set(actorPos).lerp(group.center, 0.60f);
