@@ -4,6 +4,7 @@ import legend.core.platform.input.InputAction;
 import legend.game.combat.Battle;
 import legend.game.combat.PartySwitchPreparation;
 import legend.game.combat.bent.BattleEntity27c;
+import legend.game.combat.bent.MonsterBattleEntity;
 import legend.game.combat.bent.PlayerBattleEntity;
 import legend.game.combat.ui.BattleAction;
 import legend.game.combat.ui.BattleMenuStruct58;
@@ -45,10 +46,11 @@ public final class BattleCameraDirector {
   private static final float COMMAND_PORTRAIT_DISTANCE_SCALE = 1.55f;
   private static final float COMMAND_PORTRAIT_MIN_DISTANCE = 1400.0f;
   private static final float COMMAND_PORTRAIT_MAX_DISTANCE = 2800.0f;
-  private static final float COMMAND_LOOK_HEIGHT_FACTOR = 0.18f;
+  private static final float COMMAND_LOOK_HEIGHT_FACTOR = 1.08f;
   private static final float COMMAND_CAMERA_HEIGHT = -0.08f;
   private static final float COMMAND_THREE_QUARTER_BIAS = -0.14f;
 
+  private static final int ENEMY_TURN_HOLD_TICKS = 24;
   private static final int GUARD_HOLD_TICKS = 30;
   private static final int ESCAPE_HOLD_TICKS = 42;
   private static final int ITEM_THROW_ANIMATION_TICKS = 16;
@@ -58,6 +60,7 @@ public final class BattleCameraDirector {
 
   private enum Mode {
     COMMAND,
+    ENEMY_TURN,
     GUARD,
     ESCAPE,
     ROW,
@@ -69,6 +72,7 @@ public final class BattleCameraDirector {
   private static ScriptState<BattleEntity27c> tracker;
   private static Mode mode;
   private static PlayerBattleEntity actor;
+  private static MonsterBattleEntity enemyActor;
   private static BattleEntity27c itemTarget;
   private static int itemTargetType;
   private static boolean itemTargetsAll;
@@ -83,6 +87,7 @@ public final class BattleCameraDirector {
   private static final Vector3f itemStart = new Vector3f();
   private static final Vector3f baseRay = new Vector3f();
   private static float baseDistance;
+  private static float targetFramingDistance;
   private static final Vector3f currentViewpoint = new Vector3f();
   private static final Vector3f currentRefpoint = new Vector3f();
   private static final Vector3f desiredViewpoint = new Vector3f();
@@ -93,12 +98,15 @@ public final class BattleCameraDirector {
   public static void onTurn(final BattleEntity27c entity) {
     stopTracker();
 
-    if(!(entity instanceof final PlayerBattleEntity player) || player.typeBentSlot_276 < 0) {
+    if(entity instanceof final PlayerBattleEntity player && player.typeBentSlot_276 >= 0) {
+      start(Mode.COMMAND, player);
+      sawCommandMenu = false;
       return;
     }
 
-    start(Mode.COMMAND, player);
-    sawCommandMenu = false;
+    if(entity instanceof final MonsterBattleEntity monster) {
+      startEnemyTurnShot(monster);
+    }
   }
 
   public static void onInputPressed(final InputAction action) {
@@ -190,6 +198,21 @@ public final class BattleCameraDirector {
     stopTracker();
   }
 
+  private static void startEnemyTurnShot(final MonsterBattleEntity monster) {
+    stopTracker();
+
+    mode = Mode.ENEMY_TURN;
+    enemyActor = monster;
+    actor = null;
+    ownsCamera = false;
+    modeTicks = 0;
+    sawCommandMenu = true;
+    shotSide = (monster.typeBentSlot_276 & 1) == 0 ? -1.0f : 1.0f;
+
+    tracker = SCRIPTS.allocateScriptState("GameplayOverhaulEnemyBattleCamera", (BattleEntity27c)monster);
+    tracker.setTicker(BattleCameraDirector::tick);
+  }
+
   private static void startEscapeShot(final PlayerBattleEntity player) {
     start(Mode.ESCAPE, player);
   }
@@ -219,6 +242,7 @@ public final class BattleCameraDirector {
 
     mode = nextMode;
     actor = player;
+    enemyActor = null;
     ownsCamera = false;
     modeTicks = 0;
     sawCommandMenu = nextMode != Mode.COMMAND;
@@ -229,7 +253,10 @@ public final class BattleCameraDirector {
   }
 
   private static void tick(final ScriptState<BattleEntity27c> state, final BattleEntity27c ignored) {
-    if(actor == null || mode == null || !(currentEngineState_8004dd04 instanceof final Battle battle)) {
+    if(mode == null
+      || mode == Mode.ENEMY_TURN && enemyActor == null
+      || mode != Mode.ENEMY_TURN && actor == null
+      || !(currentEngineState_8004dd04 instanceof final Battle battle)) {
       stopTracker(state);
       return;
     }
@@ -246,6 +273,25 @@ public final class BattleCameraDirector {
     modeTicks++;
 
     switch(mode) {
+      case ENEMY_TURN -> {
+        // If a retail enemy-action camera starts moving, yield immediately so
+        // the short turn-focus cue never fights the authored attack camera.
+        if(modeTicks > 2 && (battle.camera_800c67f0.flags_11c & (UPDATE_VIEWPOINT | UPDATE_REFPOINT)) != 0) {
+          stopTracker(state);
+          return;
+        }
+
+        if(!buildEnemyTurnShot()) {
+          stopTracker(state);
+          return;
+        }
+
+        applyCamera(battle, TARGET_BLEND);
+        if(modeTicks >= ENEMY_TURN_HOLD_TICKS) {
+          stopTracker(state);
+        }
+      }
+
       case GUARD -> {
         if(!buildGuardShot()) {
           stopTracker(state);
@@ -398,6 +444,13 @@ public final class BattleCameraDirector {
     }
 
     baseRay.div(baseDistance);
+
+    // Preserve the pre-portrait target-camera scale. The close command shot
+    // must not become the baseline for enemy framing when targeting starts.
+    if(mode == Mode.COMMAND && targetFramingDistance <= 0.0f && actor != null) {
+      targetFramingDistance = subjectDistance(actor, baseDistance * 1.03f, 1900.0f, 3900.0f);
+    }
+
     ownsCamera = true;
     modeTicks = 0;
     return true;
@@ -473,7 +526,8 @@ public final class BattleCameraDirector {
     }
 
     desiredRefpoint.set(targetPos);
-    final float distance = subjectDistance(target, baseDistance, 2050.0f, 5400.0f);
+    final float preferredDistance = targetFramingDistance > 0.0f ? targetFramingDistance : baseDistance;
+    final float distance = subjectDistance(target, preferredDistance, 2050.0f, 5400.0f);
     final Vector3f side = rightOf(cameraDirection).mul(0.08f * shotSide);
     cameraDirection.add(side).normalize();
     desiredViewpoint.set(desiredRefpoint).add(cameraRay(cameraDirection).mul(distance));
@@ -499,12 +553,31 @@ public final class BattleCameraDirector {
     desiredRefpoint.set(group.center);
     final float distance = clamp(
       java.lang.Math.max(
-        baseDistance * 1.04f,
+        (targetFramingDistance > 0.0f ? targetFramingDistance : baseDistance) * 1.04f,
         group.radius * 1.70f + group.maxHalfHeight * 1.90f
       ),
       2450.0f,
       6500.0f
     );
+    desiredViewpoint.set(desiredRefpoint).add(cameraRay(cameraDirection).mul(distance));
+    return true;
+  }
+
+  private static boolean buildEnemyTurnShot() {
+    final Vector3f enemyPos = focusPosition(enemyActor);
+    final GroupFrame party = frameTargets(0);
+    if(party == null) {
+      return false;
+    }
+
+    Vector3f cameraDirection = horizontalDirection(enemyPos, party.center);
+    if(cameraDirection == null) {
+      return false;
+    }
+
+    cameraDirection.add(new Vector3f(rightOf(cameraDirection)).mul(0.08f * shotSide)).normalize();
+    desiredRefpoint.set(enemyPos);
+    final float distance = subjectDistance(enemyActor, baseDistance, 2050.0f, 5400.0f);
     desiredViewpoint.set(desiredRefpoint).add(cameraRay(cameraDirection).mul(distance));
     return true;
   }
@@ -752,6 +825,7 @@ public final class BattleCameraDirector {
 
     mode = null;
     actor = null;
+    enemyActor = null;
     itemTarget = null;
     itemTargetType = 0;
     itemTargetsAll = false;
@@ -760,6 +834,7 @@ public final class BattleCameraDirector {
     sawCommandMenu = false;
     ownsCamera = false;
     modeTicks = 0;
+    targetFramingDistance = 0.0f;
   }
 
   private static void stopTracker(final ScriptState<BattleEntity27c> state) {
