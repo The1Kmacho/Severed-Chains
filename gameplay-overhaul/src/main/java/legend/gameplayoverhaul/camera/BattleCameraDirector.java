@@ -335,7 +335,7 @@ public final class BattleCameraDirector {
       case ENEMY_TURN -> {
         // Enemy turns should begin from a neutral whole-battlefield view.
         // The instant retail starts an authored camera move, release ownership.
-        if(modeTicks > 2 && (battle.camera_800c67f0.flags_11c & (UPDATE_VIEWPOINT | UPDATE_REFPOINT)) != 0) {
+        if((battle.camera_800c67f0.flags_11c & (UPDATE_VIEWPOINT | UPDATE_REFPOINT)) != 0) {
           stopTracker(state);
           return;
         }
