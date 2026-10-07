@@ -24,7 +24,7 @@ import static legend.gameplayoverhaul.GameplayOverhaulMod.MOD_ID;
 /** Character-owned persistent front/back row state plus battle-local formation anchors. */
 public final class BattleRows {
   private static final RegistryId SAVE_ID = new RegistryId(MOD_ID, "battle_rows");
-  private static final float BACK_ROW_DISTANCE = 600.0f;
+  private static final float BACK_ROW_DISTANCE_FACTOR = 0.25f;
 
   private static final int FRONT_PHYSICAL_DAMAGE_PERCENT = 110;
   private static final int BACK_MELEE_DAMAGE_PERCENT = 80;
@@ -118,13 +118,13 @@ public final class BattleRows {
     final Vector3f enemyCenter = getEnemyCenter();
     final Vector3f away = new Vector3f(front.x - enemyCenter.x, 0.0f, front.z - enemyCenter.z);
 
-    if(away.lengthSquared() < 1.0f) {
-      away.set(1.0f, 0.0f, 0.0f);
-    } else {
-      away.normalize();
+    final float enemyDistance = away.length();
+    if(enemyDistance < 1.0f) {
+      return new Vector3f(front);
     }
 
-    return new Vector3f(front).add(away.mul(BACK_ROW_DISTANCE));
+    away.div(enemyDistance);
+    return new Vector3f(front).add(away.mul(enemyDistance * BACK_ROW_DISTANCE_FACTOR));
   }
 
   private static Vector3f getEnemyCenter() {

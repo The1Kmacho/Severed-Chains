@@ -89,7 +89,7 @@ public final class PartySwitchListMenu extends ListMenu {
       .scissor(x, y, 12, 12);
 
     this.font.trim(trim).horizontalAlign(HorizontalAlign.LEFT).colour(eligible ? TextColour.WHITE : TextColour.GREY);
-    renderText(character.getName().get(), x + 17, y, this.font);
+    renderText(character.getName().get() + (BattleRows.isBackRow(charId) ? " [B]" : " [F]"), x + 17, y, this.font);
     renderText("HP " + hp.getCurrent() + "/" + hp.getMax(), x + 76, y, this.font);
     renderText("MP " + mp.getCurrent() + "/" + mp.getMax(), x + 154, y, this.font);
     renderText(eligible ? "D" + character.dlevel_13 : SwitchPartyBattleAction.disabledReason(this.hud.battle, charId), x + 218, y, this.font);
@@ -291,14 +291,21 @@ public final class PartySwitchListMenu extends ListMenu {
       return;
     }
 
-    final CharacterData2c character = gameState_800babc8.charData_32c.get(this.characterIds.get(index));
+    final int charId = this.characterIds.get(index);
+    final CharacterData2c character = gameState_800babc8.charData_32c.get(charId);
     if(this.description == null) {
       this.description = new UiBox(10, 150, 300, 26);
     }
 
     this.description.render(CONFIG.getConfig(UI_BACKGROUND_COLOUR.get()));
     this.font.trim(0).horizontalAlign(HorizontalAlign.CENTRE).colour(TextColour.WHITE);
-    renderText(I18n.translate(character.getElement()) + "  D'Lv " + character.dlevel_13, 160, 151, this.font);
+    renderText(
+      I18n.translate(character.getElement()) + "  D'Lv " + character.dlevel_13
+        + "  " + (BattleRows.isBackRow(charId) ? "BACK ROW" : "FRONT ROW"),
+      160,
+      151,
+      this.font
+    );
 
     final String addition;
     if(character.selectedAddition_19 != null && GameEngine.REGISTRIES.additions.getEntry(character.selectedAddition_19).isValid()) {

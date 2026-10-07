@@ -92,6 +92,7 @@ public final class ChangeRowBattleAction extends SeveredBattleAction {
 
         stopMenuSound(0x20, 3);
         BattleRows.finishToggle(player, this.targetBackRow);
+        battle.hud.showEffectNotification(this.targetBackRow ? "BACK ROW" : "FRONT ROW");
         player.model_148.coord2_14.transforms.rotate.y = this.originalRotation;
         battle.restorePlayerBattleAnimation(player);
 
