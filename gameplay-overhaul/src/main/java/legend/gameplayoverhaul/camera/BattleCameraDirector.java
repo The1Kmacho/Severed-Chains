@@ -49,7 +49,7 @@ public final class BattleCameraDirector {
   private static final float COMMAND_PORTRAIT_MAX_DISTANCE = 2800.0f;
   private static final float COMMAND_LOOK_HEIGHT_FACTOR = 1.08f;
   private static final float COMMAND_CAMERA_HEIGHT = -0.08f;
-  private static final float COMMAND_THREE_QUARTER_BIAS = -0.14f;
+  private static final float PORTRAIT_FRONT_BIAS = 0.48f;
   private static final float ITEM_LOOK_HEIGHT_FACTOR = 1.18f;
   private static final float ITEM_CAMERA_HEIGHT = -0.14f;
   private static final float GUARD_LOOK_HEIGHT_FACTOR = 1.08f;
@@ -581,9 +581,7 @@ public final class BattleCameraDirector {
     // tactical shot. Sit mostly side-on, with a slight rear three-quarter bias
     // so the camera can get inside the party formation instead of framing the
     // neighbouring character in front of the active one.
-    final Vector3f portraitDirection = rightOf(forward).mul(shotSide)
-      .add(new Vector3f(forward).mul(COMMAND_THREE_QUARTER_BIAS))
-      .normalize();
+    final Vector3f portraitDirection = portraitDirection(actor, forward);
 
     final float halfHeight = subjectHalfHeight(actor);
     desiredRefpoint.set(actorPos).add(0.0f, -halfHeight * COMMAND_LOOK_HEIGHT_FACTOR, 0.0f);
@@ -637,9 +635,7 @@ public final class BattleCameraDirector {
       return false;
     }
 
-    final Vector3f portraitDirection = rightOf(forward).mul(shotSide)
-      .add(new Vector3f(forward).mul(COMMAND_THREE_QUARTER_BIAS))
-      .normalize();
+    final Vector3f portraitDirection = portraitDirection(player, forward);
 
     final float halfHeight = subjectHalfHeight(player);
     desiredRefpoint.set(playerPos).add(0.0f, -halfHeight * lookHeightFactor, 0.0f);
@@ -770,10 +766,10 @@ public final class BattleCameraDirector {
     final float distance = clamp(
       java.lang.Math.max(
         baseDistance * 1.04f,
-        separation * 0.72f + groupRadius * 1.15f + maxHalfHeight * 1.75f
+        separation * 1.10f + groupRadius * 1.25f + maxHalfHeight * 2.00f
       ),
-      2800.0f,
-      6800.0f
+      3400.0f,
+      7600.0f
     );
 
     final Vector3f side = rightOf(attackAxis).mul(shotSide)
@@ -959,6 +955,31 @@ public final class BattleCameraDirector {
       min,
       max
     );
+  }
+
+  private static Vector3f portraitDirection(
+    final PlayerBattleEntity player,
+    final Vector3f fallbackForward
+  ) {
+    final float yaw = player.model_148.coord2_14.transforms.rotate.y;
+    final Vector3f facing = new Vector3f(
+      -(float)java.lang.Math.sin(yaw),
+      0.0f,
+      -(float)java.lang.Math.cos(yaw)
+    );
+
+    if(facing.lengthSquared() < 0.001f) {
+      facing.set(fallbackForward);
+    } else {
+      facing.normalize();
+    }
+
+    // Stay recognizably side-on, but sit in the front hemisphere of the
+    // character so idle-pose torso twists cannot turn the portrait into a
+    // back shot.
+    return rightOf(facing).mul(shotSide)
+      .add(new Vector3f(facing).mul(PORTRAIT_FRONT_BIAS))
+      .normalize();
   }
 
   private static Vector3f portraitRay(final Vector3f horizontalDirection, final float cameraHeight) {
