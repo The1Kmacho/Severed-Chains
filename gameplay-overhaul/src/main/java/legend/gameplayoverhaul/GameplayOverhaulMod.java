@@ -168,7 +168,6 @@ public final class GameplayOverhaulMod {
   private static final Vector3f savedCameraRay = new Vector3f();
   private static float parryCameraStartDistance;
   private static float parryCameraBaseDistance;
-  private static float parryCameraFocusDistance;
   private static boolean parryCameraCueResolved;
   private static boolean parryCameraActive;
 
@@ -308,9 +307,12 @@ public final class GameplayOverhaulMod {
       return;
     }
 
-    // Hit-check-only attacks arrive too late to offer meaningful reaction time.
-    // Keep them non-parryable rather than flashing an impossible square.
+    // Hit-check-only attacks arrive too late for a fair parry window, but the
+    // camera still knows the real defender at this point. Use that information
+    // as a short two-subject fallback instead of leaving the enemy-only turn
+    // portrait on screen.
     if(event.suggestedImpactTicks <= 0) {
+      BattleCameraDirector.onIncomingEnemyAttack(attacker, defender, 12);
       return;
     }
 
@@ -1173,12 +1175,6 @@ public final class GameplayOverhaulMod {
       return;
     }
 
-    // The same approach interpolation drives both framing and zoom. Long
-    // approaches stay a little wider, while close melee can push in harder.
-    parryCameraFocusDistance = java.lang.Math.max(
-      650.0f,
-      parryCameraBaseDistance * (parryCameraStartDistance > 2400.0f ? 0.58f : 0.46f)
-    );
     parryCameraCueResolved = false;
     parryCameraActive = true;
 
@@ -1220,16 +1216,52 @@ public final class GameplayOverhaulMod {
     float progress = 1.0f - currentDistance / parryCameraStartDistance;
     progress = java.lang.Math.max(0.0f, java.lang.Math.min(1.0f, progress));
 
-    // Smoothstep gives the pan and zoom the same restrained cinematic ease on
-    // the way in and naturally reverses it while the enemy returns home.
-    final float blend = progress * progress * (3.0f - 2.0f * progress);
-    final Vector3f midpoint = new Vector3f(attackerPos).lerp(defenderPos, 0.5f);
-    final Vector3f desiredRefpoint = new Vector3f(savedCameraRefpoint).lerp(midpoint, blend);
-    final float desiredDistance =
-      parryCameraBaseDistance
-        + (parryCameraFocusDistance - parryCameraBaseDistance) * blend;
+    // The attack camera must read as a two-subject shot immediately. Build the
+    // shot around the live midpoint and attack axis instead of blending out of
+    // the enemy-only turn portrait.
+    final Vector3f attackAxis = new Vector3f(defenderPos)
+      .sub(attackerPos)
+      .mul(1.0f, 0.0f, 1.0f);
+    if(attackAxis.lengthSquared() < 1.0f) {
+      attackAxis.set(0.0f, 0.0f, 1.0f);
+    } else {
+      attackAxis.normalize();
+    }
+
+    final Vector3f sideRay = new Vector3f(-attackAxis.z, 0.0f, attackAxis.x);
+    if(sideRay.dot(savedCameraRay) < 0.0f) {
+      sideRay.negate();
+    }
+
+    final Vector3f cameraRay = new Vector3f(
+      sideRay.x,
+      savedCameraRay.y * 0.70f,
+      sideRay.z
+    ).normalize();
+
+    final float attackerHalfHeight =
+      java.lang.Math.max(700.0f, java.lang.Math.abs(parryCameraAttacker.middleOffsetY_86) * 50.0f);
+    final float defenderHalfHeight =
+      java.lang.Math.max(700.0f, java.lang.Math.abs(parryCameraDefender.middleOffsetY_86) * 50.0f);
+    final float maxHalfHeight = java.lang.Math.max(attackerHalfHeight, defenderHalfHeight);
+    final float horizontalSeparation = (float)java.lang.Math.sqrt(
+      (defenderPos.x - attackerPos.x) * (defenderPos.x - attackerPos.x)
+        + (defenderPos.z - attackerPos.z) * (defenderPos.z - attackerPos.z)
+    );
+
+    final Vector3f desiredRefpoint = new Vector3f(attackerPos).lerp(defenderPos, 0.5f);
+    final float desiredDistance = java.lang.Math.max(
+      3400.0f,
+      java.lang.Math.min(
+        7600.0f,
+        java.lang.Math.max(
+          parryCameraBaseDistance * 1.02f,
+          horizontalSeparation * 1.10f + maxHalfHeight * 2.00f
+        )
+      )
+    );
     final Vector3f desiredViewpoint = new Vector3f(desiredRefpoint)
-      .add(new Vector3f(savedCameraRay).mul(desiredDistance));
+      .add(cameraRay.mul(desiredDistance));
 
     final var camera = battle.camera_800c67f0;
     camera.flags_11c &= ~(UPDATE_VIEWPOINT | UPDATE_REFPOINT);
