@@ -178,6 +178,13 @@ public final class BattleCameraDirector {
 
   public static void onPlayerAttackPrepared(final PlayerBattleEntity player, final int waitTicks) {
     if(mode != Mode.ATTACK_HANDOFF || actor != player) {
+      // If retail has already started a real camera move, do not recapture it
+      // just because the attack-preparation event arrived a tick later.
+      if(currentEngineState_8004dd04 instanceof final Battle battle
+        && (battle.camera_800c67f0.flags_11c & (UPDATE_VIEWPOINT | UPDATE_REFPOINT)) != 0) {
+        return;
+      }
+
       startAttackHandoff(player);
     }
 
@@ -320,9 +327,9 @@ public final class BattleCameraDirector {
 
   private static void tick(final ScriptState<BattleEntity27c> state, final BattleEntity27c ignored) {
     if(mode == null
-      || (mode == Mode.ENEMY_TURN || mode == Mode.ENEMY_ATTACK) && enemyActor == null
-      || mode == Mode.ENEMY_ATTACK && enemyDefender == null
-      || mode != Mode.ENEMY_TURN && mode != Mode.ENEMY_ATTACK && actor == null
+      || ((mode == Mode.ENEMY_TURN || mode == Mode.ENEMY_ATTACK) && enemyActor == null)
+      || (mode == Mode.ENEMY_ATTACK && enemyDefender == null)
+      || (mode != Mode.ENEMY_TURN && mode != Mode.ENEMY_ATTACK && actor == null)
       || !(currentEngineState_8004dd04 instanceof final Battle battle)) {
       stopTracker(state);
       return;
