@@ -39,6 +39,16 @@ public final class BattleCameraDirector {
   private static final float IDLE_CAMERA_DRIFT = 72.0f;
   private static final float IDLE_LOOK_DRIFT = 18.0f;
 
+  // Lost Odyssey-style command portrait: intentionally closer than the
+  // full-body targeting shots, with the look point and camera raised toward
+  // the upper torso/head. Cropping the legs/hips is desirable here.
+  private static final float COMMAND_PORTRAIT_DISTANCE_SCALE = 1.55f;
+  private static final float COMMAND_PORTRAIT_MIN_DISTANCE = 1400.0f;
+  private static final float COMMAND_PORTRAIT_MAX_DISTANCE = 2800.0f;
+  private static final float COMMAND_LOOK_HEIGHT_FACTOR = 0.18f;
+  private static final float COMMAND_CAMERA_HEIGHT = -0.08f;
+  private static final float COMMAND_THREE_QUARTER_BIAS = -0.14f;
+
   private static final int GUARD_HOLD_TICKS = 30;
   private static final int ESCAPE_HOLD_TICKS = 42;
   private static final int ITEM_THROW_ANIMATION_TICKS = 16;
@@ -109,6 +119,16 @@ public final class BattleCameraDirector {
       && !player.item_d4.isEmpty()
       && player.item_d4.canTarget(Item.TargetType.ENEMIES)) {
       startAttackItemShot(player, menu);
+      return;
+    }
+
+    // Target selection belongs to the cinematic director, but once a normal
+    // physical attack target is confirmed, retail owns the camera again.
+    if(action == INPUT_ACTION_MENU_CONFIRM.get()
+      && menu.displayTargetArrowAndName_4c
+      && (menu.currentAction == LodBattleActions.ATTACK.get()
+        || menu.currentAction == LodBattleActions.D_ATTACK.get())) {
+      stopTracker();
       return;
     }
 
@@ -395,10 +415,23 @@ public final class BattleCameraDirector {
       return false;
     }
 
-    final Vector3f side = rightOf(forward).mul(shotSide);
-    desiredRefpoint.set(actorPos);
-    final float distance = subjectDistance(actor, baseDistance * 1.03f, 1900.0f, 3900.0f);
-    desiredViewpoint.set(desiredRefpoint).add(cameraRay(side).mul(distance));
+    // Command selection is a close character portrait rather than a full-body
+    // tactical shot. Sit mostly side-on, with a slight rear three-quarter bias
+    // so the camera can get inside the party formation instead of framing the
+    // neighbouring character in front of the active one.
+    final Vector3f portraitDirection = rightOf(forward).mul(shotSide)
+      .add(new Vector3f(forward).mul(COMMAND_THREE_QUARTER_BIAS))
+      .normalize();
+
+    final float halfHeight = subjectHalfHeight(actor);
+    desiredRefpoint.set(actorPos).add(0.0f, -halfHeight * COMMAND_LOOK_HEIGHT_FACTOR, 0.0f);
+
+    final float distance = clamp(
+      halfHeight * COMMAND_PORTRAIT_DISTANCE_SCALE,
+      COMMAND_PORTRAIT_MIN_DISTANCE,
+      COMMAND_PORTRAIT_MAX_DISTANCE
+    );
+    desiredViewpoint.set(desiredRefpoint).add(commandPortraitRay(portraitDirection).mul(distance));
 
     final float drift = (float)java.lang.Math.sin(modeTicks * IDLE_DRIFT_SPEED) * IDLE_CAMERA_DRIFT;
     final float lookDrift = (float)java.lang.Math.sin(modeTicks * IDLE_DRIFT_SPEED * 0.71f + 0.8f) * IDLE_LOOK_DRIFT;
@@ -647,6 +680,14 @@ public final class BattleCameraDirector {
       min,
       max
     );
+  }
+
+  private static Vector3f commandPortraitRay(final Vector3f horizontalDirection) {
+    return new Vector3f(
+      horizontalDirection.x,
+      COMMAND_CAMERA_HEIGHT,
+      horizontalDirection.z
+    ).normalize();
   }
 
   private static Vector3f cameraRay(final Vector3f horizontalDirection) {
