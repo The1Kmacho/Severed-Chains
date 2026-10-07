@@ -116,13 +116,18 @@ public final class BattleCameraDirector {
       return;
     }
 
-    boolean escapeSelected = action == LodMod.INPUT_ACTION_BTTL_ESCAPE.get();
+    final BattleAction escape = LodBattleActions.ESCAPE.get();
+    boolean escapeSelected =
+      action == LodMod.INPUT_ACTION_BTTL_ESCAPE.get()
+        && menu.actions.contains(escape)
+        && !menu.disabledActions.contains(escape);
+
     if(!escapeSelected
       && action == INPUT_ACTION_MENU_CONFIRM.get()
       && menu.selectedIcon_22 >= 0
       && menu.selectedIcon_22 < menu.actions.size()) {
       final BattleAction selected = menu.actions.get(menu.selectedIcon_22);
-      escapeSelected = selected == LodBattleActions.ESCAPE.get();
+      escapeSelected = selected == escape && !menu.disabledActions.contains(escape);
     }
 
     if(escapeSelected) {
@@ -268,12 +273,20 @@ public final class BattleCameraDirector {
 
     sawCommandMenu = true;
 
-    if(menu.currentAction != null) {
-      stopTracker(state);
+    final boolean targeting = menu.displayTargetArrowAndName_4c;
+
+    // Once an action has been chosen, stay dormant while its item/spell/
+    // Addition submenu prepares targeting. This keeps the director alive long
+    // enough to frame the target, without touching the subsequent cinematic.
+    if(menu.currentAction != null && !targeting) {
+      suspend();
       return;
     }
 
-    if(battle.hud.listMenu_800c6b60 != null || menu.pauseCurrentAction || menu.targetArrowHiding || menu.state_00 == 5) {
+    if((battle.hud.listMenu_800c6b60 != null && !targeting)
+      || menu.pauseCurrentAction
+      || menu.targetArrowHiding
+      || menu.state_00 == 5) {
       suspend();
       return;
     }
@@ -281,8 +294,6 @@ public final class BattleCameraDirector {
     if(!ownsCamera && !captureCamera(battle)) {
       return;
     }
-
-    final boolean targeting = menu.displayTargetArrowAndName_4c;
     final boolean framed = targeting ? buildTargetShot(menu) : buildCommandShot();
     if(!framed) {
       suspend();
