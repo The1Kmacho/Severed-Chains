@@ -159,7 +159,10 @@ public final class PartySwitchListMenu extends ListMenu {
           return;
         }
 
-        battle.setBattleEntityAnimation(this.preparation.outgoingState, RUN_ANIMATION);
+        if(!battle.setBattleEntityAnimation(this.preparation.outgoingState, RUN_ANIMATION)) {
+          return;
+        }
+
         this.preparation.outgoingState.clearFlag(BattleEntity27c.FLAG_ANIMATE_ONCE);
         this.preparation.outgoing.model_148.coord2_14.transforms.rotate.y = legend.core.MathHelper.psxDegToRad(0xc00);
         this.phaseTicks = RUN_DELAY_TICKS;
@@ -185,18 +188,27 @@ public final class PartySwitchListMenu extends ListMenu {
 
         this.stopRunEffects();
         battle.commitPartySwitchHandoff(this.preparation);
+        this.phase = 3;
+      }
 
-        battle.setBattleEntityAnimation(this.preparation.incomingState, RUN_ANIMATION);
+      case 3 -> {
+        if(!battle.isBattleEntityRenderReady(this.preparation.incomingState)) {
+          return;
+        }
+        if(!battle.setBattleEntityAnimation(this.preparation.incomingState, RUN_ANIMATION)) {
+          return;
+        }
+
         this.preparation.incomingState.clearFlag(BattleEntity27c.FLAG_ANIMATE_ONCE);
         this.preparation.incoming.model_148.coord2_14.transforms.rotate.y = legend.core.MathHelper.psxDegToRad(0x400);
 
         this.startRunEffects(this.preparation.incomingState, this.preparation.incoming, 8.0f);
         battle.moveBattleEntityTo(this.preparation.incomingState, this.preparation.formationPosition, RUN_TICKS);
         this.phaseTicks = 0;
-        this.phase = 3;
+        this.phase = 4;
       }
 
-      case 3 -> {
+      case 4 -> {
         this.tickRunEffects();
         if(battle.isBattleEntityMoving(this.preparation.incoming)) {
           return;

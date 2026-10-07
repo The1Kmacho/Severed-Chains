@@ -8667,10 +8667,10 @@ public class Battle extends EngineState<Battle> {
     );
   }
 
-  /** Direct counterpart to the retail player-script animation setter. */
+  /** Direct counterpart to retail's queued animation-load + attach sequence. */
   public boolean setBattleEntityAnimation(final ScriptState<? extends BattleEntity27c> entityState, int newAnim) {
     final BattleEntity27c bent = entityState.innerStruct_00;
-    if(entityState.hasFlag(FLAG_1) || bent.combatant_144 == null) {
+    if(entityState.hasFlag(FLAG_1) || bent.combatant_144 == null || !bent.combatant_144.isModelLoaded()) {
       return false;
     }
 
@@ -8679,25 +8679,32 @@ public class Battle extends EngineState<Battle> {
     }
 
     final int currentAnim = bent.currentAnimIndex_270;
-    if(currentAnim >= 0) {
-      if(currentAnim != newAnim) {
-        FUN_800ca194(bent.combatant_144.assets_14[currentAnim]);
-      }
-      bent.currentAnimIndex_270 = -1;
+    if(currentAnim < 0) {
+      this.FUN_800c9e10(bent.combatant_144, newAnim);
+      bent.currentAnimIndex_270 = newAnim;
+    } else if(currentAnim != newAnim) {
+      FUN_800ca194(bent.combatant_144.assets_14[currentAnim]);
+      this.FUN_800c9e10(bent.combatant_144, newAnim);
+      bent.currentAnimIndex_270 = newAnim;
     }
 
-    if(bent.combatant_144.isAssetLoaded(newAnim)) {
-      FUN_800ca194(bent.combatant_144.assets_14[bent.loadingAnimIndex_26e]);
-      this.loadAnimationAssetIntoModel(bent.model_148, bent.combatant_144, newAnim);
-      entityState.clearFlag(FLAG_ANIMATE_ONCE | FLAG_HIDE);
-      bent.model_148.animationState_9c = 1;
-      bent.loadingAnimIndex_26e = newAnim;
-      bent.currentAnimIndex_270 = -1;
-      return true;
+    if(!bent.combatant_144.isAssetLoaded(bent.currentAnimIndex_270)) {
+      return false;
     }
 
-    this.FUN_800c9e10(bent.combatant_144, newAnim);
-    return false;
+    final int loadedAnim = bent.currentAnimIndex_270;
+    FUN_800ca194(bent.combatant_144.assets_14[bent.loadingAnimIndex_26e]);
+    this.loadAnimationAssetIntoModel(bent.model_148, bent.combatant_144, loadedAnim);
+    entityState.clearFlag(FLAG_ANIMATE_ONCE | FLAG_HIDE);
+    bent.model_148.animationState_9c = 1;
+    bent.loadingAnimIndex_26e = loadedAnim;
+    bent.currentAnimIndex_270 = -1;
+    return true;
+  }
+
+  public boolean isBattleEntityRenderReady(final ScriptState<? extends BattleEntity27c> entityState) {
+    final BattleEntity27c bent = entityState.innerStruct_00;
+    return bent.combatant_144 != null && bent.combatant_144.isModelLoaded() && entityState.renderer_08 != null;
   }
 
   @SuppressWarnings("unchecked")

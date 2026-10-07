@@ -21,8 +21,8 @@ import static legend.game.Scus94491BpeSegment_800b.gameState_800babc8;
 
 public final class SwitchPartyBattleAction extends SeveredBattleAction {
   public SwitchPartyBattleAction() {
-    // Three-frame double-arrow icon in battle_icons.png row 1.
-    super(1, 3);
+    // Reuse the existing Change Addition animated icon.
+    super(0, 3);
   }
 
   public static boolean hasEligibleReplacement(final Battle battle, final PlayerBattleEntity outgoing) {
