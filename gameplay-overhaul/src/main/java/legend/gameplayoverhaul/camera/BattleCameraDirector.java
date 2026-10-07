@@ -815,7 +815,6 @@ public final class BattleCameraDirector {
   private static void suspend() {
     ownsCamera = false;
     modeTicks = 0;
-    targetFramingDistance = 0.0f;
   }
 
   private static void stopTracker() {
@@ -835,6 +834,7 @@ public final class BattleCameraDirector {
     sawCommandMenu = false;
     ownsCamera = false;
     modeTicks = 0;
+    targetFramingDistance = 0.0f;
   }
 
   private static void stopTracker(final ScriptState<BattleEntity27c> state) {
