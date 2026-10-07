@@ -22,7 +22,9 @@ import legend.game.combat.effects.GenericAttachment1c;
 import legend.game.combat.effects.GuardEffect06;
 import legend.gameplayoverhaul.effects.CombatImpactEffect;
 import legend.gameplayoverhaul.effects.DragoonAuraEffect;
+import legend.gameplayoverhaul.battleactions.ChangeRowBattleAction;
 import legend.gameplayoverhaul.battleactions.SwitchPartyBattleAction;
+import legend.gameplayoverhaul.rows.BattleRows;
 import legend.game.combat.types.AttackType;
 import legend.game.modding.events.battle.BattleEffectDisplayEvent;
 import legend.game.modding.events.battle.ArcherSpEvent;
@@ -34,6 +36,9 @@ import legend.game.modding.events.battle.CombatantModelLoadedEvent;
 import legend.game.modding.events.battle.PlayerAttackPreparedEvent;
 import legend.game.modding.events.battle.PlayerBattleSlotChangedEvent;
 import legend.game.modding.events.battle.PostBattleXpDistributionEvent;
+import legend.game.modding.events.gamestate.GameLoadedEvent;
+import legend.game.saves.ReadSaveDataEvent;
+import legend.game.saves.WriteSaveDataEvent;
 import legend.game.modding.events.battle.GuardUsedEvent;
 import legend.game.modding.events.battle.IncomingAttackCueEvent;
 import legend.game.modding.events.characters.AdditionDescriptionEvent;
@@ -86,6 +91,8 @@ public final class GameplayOverhaulMod {
     new Registrar<>(REGISTRIES.battleActions, MOD_ID);
   public static final RegistryDelegate<BattleAction> SWITCH_PARTY =
     BATTLE_ACTION_REGISTRAR.register("switch_party", SwitchPartyBattleAction::new);
+  public static final RegistryDelegate<BattleAction> CHANGE_ROW =
+    BATTLE_ACTION_REGISTRAR.register("change_row", ChangeRowBattleAction::new);
 
   private static final int PARRY_WINDOW_TICKS = 4;
   private static final int DEFAULT_PARRY_CUE_TICKS = 18;
@@ -200,9 +207,28 @@ public final class GameplayOverhaulMod {
 
   @EventListener
   public static void gatherBattleActions(final GatherBattleActionsEvent event) {
+    if(ChangeRowBattleAction.canChangeRow(event.player)) {
+      event.actions.put(CHANGE_ROW.get(), 900);
+    }
+
     if(SwitchPartyBattleAction.hasEligibleReplacement(event.battle, event.player)) {
       event.actions.put(SWITCH_PARTY.get(), 950);
     }
+  }
+
+  @EventListener
+  public static void gameLoaded(final GameLoadedEvent event) {
+    BattleRows.resetForLoadedGame();
+  }
+
+  @EventListener
+  public static void readSaveData(final ReadSaveDataEvent event) {
+    BattleRows.readSaveData(event);
+  }
+
+  @EventListener
+  public static void writeSaveData(final WriteSaveDataEvent event) {
+    BattleRows.writeSaveData(event);
   }
 
   @EventListener
@@ -372,6 +398,7 @@ public final class GameplayOverhaulMod {
       clearArcherAdditionState();
     }
 
+    BattleRows.endBattle();
     clearDragoonAuras();
     restoreBattleLighting();
     BREAK_GAUGE.clear();
@@ -393,6 +420,7 @@ public final class GameplayOverhaulMod {
       PARTY_SLOT_MEMBERS.computeIfAbsent(slot, ignored -> new LinkedHashSet<>()).add(charId);
     }
 
+    BattleRows.beginBattle(event.battle);
     polishBattleLighting();
     updateDragoonAuras();
   }
@@ -536,6 +564,8 @@ public final class GameplayOverhaulMod {
 
   @EventListener
   public static void attack(final AttackEvent event) {
+    BattleRows.applyPhysicalDamageModifiers(event);
+
     if(event.attacker instanceof final MonsterBattleEntity monster
       && event.defender instanceof final PlayerBattleEntity defender) {
       if(event.attackType != AttackType.PHYSICAL) {

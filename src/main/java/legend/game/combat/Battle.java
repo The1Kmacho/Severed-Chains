@@ -4160,6 +4160,20 @@ public class Battle extends EngineState<Battle> {
     if(this.hud.battleMenu_800c6c34.currentAction != null) {
       final BattleActionTickFlowControl flow = this.hud.battleMenu_800c6c34.currentAction.tick(this, this.hud.battleMenu_800c6c34.player_04);
 
+      if(this.hud.battleMenu_800c6c34.pauseCurrentAction) {
+        if(flow == BattleActionTickFlowControl.CONTINUE_SCRIPT) {
+          this.hud.battleMenu_800c6c34.pauseCurrentAction = false;
+          return FlowControl.CONTINUE;
+        }
+
+        if(flow == BattleActionTickFlowControl.REPEAT_TURN) {
+          this.hud.battleMenu_800c6c34.currentAction = null;
+          this.hud.battleMenu_800c6c34.pauseCurrentAction = false;
+        }
+
+        return FlowControl.PAUSE_AND_REWIND;
+      }
+
       if(flow != BattleActionTickFlowControl.IGNORE) {
         if(flow == BattleActionTickFlowControl.CONTINUE_SCRIPT) {
           return FlowControl.CONTINUE;
@@ -4190,6 +4204,10 @@ public class Battle extends EngineState<Battle> {
 
     this.hud.toggleHighlight(false);
     script.params_20[0].set(this.hud.battleMenu_800c6c34.currentAction.getRegistryId());
+
+    if(this.hud.battleMenu_800c6c34.pauseCurrentAction) {
+      return FlowControl.PAUSE_AND_REWIND;
+    }
 
     //LAB_800ccb28
     return FlowControl.CONTINUE;

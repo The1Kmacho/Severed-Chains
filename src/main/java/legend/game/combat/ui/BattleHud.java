@@ -2057,6 +2057,10 @@ public class BattleHud {
       return null;
     }
 
+    if(flow == BattleActionUseFlowControl.PAUSE_ACTION) {
+      this.battleMenu_800c6c34.pauseCurrentAction = true;
+    }
+
     return selectedAction;
   }
 
