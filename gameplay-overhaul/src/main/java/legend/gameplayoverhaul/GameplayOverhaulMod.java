@@ -238,6 +238,8 @@ public final class GameplayOverhaulMod {
       return;
     }
 
+    BattleCameraDirector.onInputPressed(event.action);
+
     if(activeArcherPlayer != null && !activeArcherResolved) {
       if(event.action == LodMod.INPUT_ACTION_BTTL_ATTACK.get()) {
         final int now = tickCount_800bb0fc;
@@ -549,6 +551,7 @@ public final class GameplayOverhaulMod {
 
   @EventListener
   public static void guardUsed(final GuardUsedEvent event) {
+    BattleCameraDirector.startGuardShot(event.player);
     setDefense(event.player, "guard_defense", 25, selfEffectTurns(1));
     event.player.stats.getStat(LodMod.MAGIC_DEFENSE_STAT.get()).addMod(
       new RegistryId(MOD_ID, "guard_magic_defense"),
