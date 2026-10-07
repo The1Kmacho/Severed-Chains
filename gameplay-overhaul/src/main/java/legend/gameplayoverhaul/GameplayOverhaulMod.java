@@ -359,6 +359,14 @@ public final class GameplayOverhaulMod {
       XP_SURVIVORS.add(playerState.innerStruct_00.charId_272);
     }
 
+    if(partySwitched && battleState_8006e398.getAlivePlayerCount() > 0) {
+      gameState_800babc8.charIds_88.clear();
+      for(final var playerState : battleState_8006e398.playerBents_e40) {
+        gameState_800babc8.charIds_88.add(playerState.innerStruct_00.charId_272);
+      }
+      legend.game.SItem.cacheCharacterSlots();
+    }
+
     cancelParryCues();
     if(activeArcherPlayer != null) {
       clearArcherAdditionState();
