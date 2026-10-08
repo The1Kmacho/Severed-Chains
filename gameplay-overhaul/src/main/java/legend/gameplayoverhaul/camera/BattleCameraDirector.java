@@ -50,6 +50,9 @@ public final class BattleCameraDirector {
   private static final float COMMAND_LOOK_HEIGHT_FACTOR = 1.18f;
   private static final float COMMAND_CAMERA_HEIGHT = -0.10f;
   private static final float PORTRAIT_FRONT_BIAS = 0.48f;
+  private static final float TURN_ENTRY_DISTANCE_SCALE = 1.22f;
+  private static final float TURN_ENTRY_FRONT_BIAS = 0.24f;
+  private static final int TURN_ENTRY_SETTLE_TICKS = 8;
   private static final float ITEM_PORTRAIT_DISTANCE_SCALE = 1.95f;
   private static final float ITEM_PORTRAIT_MIN_DISTANCE = 2050.0f;
   private static final float ITEM_PORTRAIT_MAX_DISTANCE = 3600.0f;
@@ -67,6 +70,7 @@ public final class BattleCameraDirector {
   private static final int ITEM_THROW_TIMEOUT_TICKS = 120;
 
   private enum Mode {
+    TURN_ENTRY,
     COMMAND,
     ATTACK_HANDOFF,
     ENEMY_TURN,
@@ -92,7 +96,13 @@ public final class BattleCameraDirector {
   private static boolean sawCommandMenu;
   private static boolean ownsCamera;
   private static float shotSide;
+  private static boolean turnEntrySnapped;
+  private static int turnEntryTicks;
 
+  private static final Vector3f turnEntryStartViewpoint = new Vector3f();
+  private static final Vector3f turnEntryStartRefpoint = new Vector3f();
+  private static final Vector3f turnEntryEndViewpoint = new Vector3f();
+  private static final Vector3f turnEntryEndRefpoint = new Vector3f();
   private static final Vector3f actionAnchor = new Vector3f();
   private static final Vector3f actionWideViewpoint = new Vector3f();
   private static final Vector3f actionWideRefpoint = new Vector3f();
@@ -112,7 +122,7 @@ public final class BattleCameraDirector {
     stopTracker();
 
     if(entity instanceof final PlayerBattleEntity player && player.typeBentSlot_276 >= 0) {
-      start(Mode.COMMAND, player);
+      start(Mode.TURN_ENTRY, player);
       sawCommandMenu = false;
       return;
     }
@@ -284,7 +294,9 @@ public final class BattleCameraDirector {
     enemyActor = null;
     ownsCamera = false;
     modeTicks = 0;
-    sawCommandMenu = nextMode != Mode.COMMAND;
+    sawCommandMenu = nextMode != Mode.COMMAND && nextMode != Mode.TURN_ENTRY;
+    turnEntrySnapped = false;
+    turnEntryTicks = 0;
     shotSide = (player.typeBentSlot_276 & 1) == 0 ? -1.0f : 1.0f;
 
     tracker = SCRIPTS.allocateScriptState("GameplayOverhaulBattleCamera", (BattleEntity27c)player);
@@ -297,6 +309,11 @@ public final class BattleCameraDirector {
       || (mode != Mode.ENEMY_TURN && actor == null)
       || !(currentEngineState_8004dd04 instanceof final Battle battle)) {
       stopTracker(state);
+      return;
+    }
+
+    if(mode == Mode.TURN_ENTRY) {
+      tickTurnEntry(state, battle);
       return;
     }
 
@@ -392,6 +409,82 @@ public final class BattleCameraDirector {
 
       case ITEM_ATTACK -> tickAttackItem(state, battle);
       default -> { }
+    }
+  }
+
+  private static void tickTurnEntry(final ScriptState<BattleEntity27c> state, final Battle battle) {
+    final BattleMenuStruct58 menu = battle.hud.battleMenu_800c6c34;
+
+    // The turn event can arrive a little before the command UI owns the
+    // player. Keep the previous shot until the new turn is actually ready.
+    if(menu.player_04 != actor || menu.state_00 == 0) {
+      return;
+    }
+
+    sawCommandMenu = true;
+
+    // If the player somehow enters a submenu/targeting immediately, skip the
+    // flourish and let normal command/target framing take over.
+    if(menu.displayTargetArrowAndName_4c
+      || menu.currentAction != null
+      || battle.hud.listMenu_800c6b60 != null
+      || menu.pauseCurrentAction
+      || menu.targetArrowHiding
+      || menu.state_00 == 5) {
+      mode = Mode.COMMAND;
+      ownsCamera = false;
+      modeTicks = 0;
+      tickCommand(state, battle);
+      return;
+    }
+
+    if(!turnEntrySnapped) {
+      if(!captureCamera(battle)) {
+        return;
+      }
+
+      // Build the final portrait first so targeting can still inherit the
+      // pre-portrait retail distance captured above.
+      if(!buildCommandPortrait(false)) {
+        stopTracker(state);
+        return;
+      }
+      turnEntryEndViewpoint.set(desiredViewpoint);
+      turnEntryEndRefpoint.set(desiredRefpoint);
+
+      if(!buildTurnEntryStagingShot()) {
+        stopTracker(state);
+        return;
+      }
+      turnEntryStartViewpoint.set(desiredViewpoint);
+      turnEntryStartRefpoint.set(desiredRefpoint);
+
+      // Lost Odyssey-style edit: hard cut into the new character's shot,
+      // then immediately begin the short ease into the command portrait.
+      currentViewpoint.set(turnEntryStartViewpoint);
+      currentRefpoint.set(turnEntryStartRefpoint);
+      setCameraDirect(battle, currentViewpoint, currentRefpoint);
+
+      turnEntrySnapped = true;
+      turnEntryTicks = 0;
+      return;
+    }
+
+    turnEntryTicks++;
+    final float t = clamp(turnEntryTicks / (float)TURN_ENTRY_SETTLE_TICKS, 0.0f, 1.0f);
+    final float inverse = 1.0f - t;
+    final float eased = 1.0f - inverse * inverse * inverse;
+
+    currentViewpoint.set(turnEntryStartViewpoint).lerp(turnEntryEndViewpoint, eased);
+    currentRefpoint.set(turnEntryStartRefpoint).lerp(turnEntryEndRefpoint, eased);
+    setCameraDirect(battle, currentViewpoint, currentRefpoint);
+
+    if(turnEntryTicks >= TURN_ENTRY_SETTLE_TICKS) {
+      mode = Mode.COMMAND;
+      ownsCamera = true;
+      modeTicks = 0;
+      turnEntrySnapped = false;
+      turnEntryTicks = 0;
     }
   }
 
@@ -515,7 +608,7 @@ public final class BattleCameraDirector {
 
     // Preserve the pre-portrait target-camera scale. The close command shot
     // must not become the baseline for enemy framing when targeting starts.
-    if(mode == Mode.COMMAND && targetFramingDistance <= 0.0f && actor != null) {
+    if((mode == Mode.COMMAND || mode == Mode.TURN_ENTRY) && targetFramingDistance <= 0.0f && actor != null) {
       targetFramingDistance = subjectDistance(actor, baseDistance * 1.03f, 1900.0f, 3900.0f);
     }
 
@@ -525,6 +618,10 @@ public final class BattleCameraDirector {
   }
 
   private static boolean buildCommandShot() {
+    return buildCommandPortrait(true);
+  }
+
+  private static boolean buildCommandPortrait(final boolean idleDrift) {
     final Vector3f actorPos = focusPosition(actor);
     final GroupFrame enemies = frameTargets(1);
     if(enemies == null) {
@@ -539,7 +636,7 @@ public final class BattleCameraDirector {
     // Command selection is a close character portrait rather than a full-body
     // tactical shot. Stay mostly side-on, but use the model's actual facing to
     // sit in its front hemisphere and keep the face readable.
-    final Vector3f portraitDirection = portraitDirection(actor, forward);
+    final Vector3f portraitDirection = portraitDirection(actor, forward, PORTRAIT_FRONT_BIAS);
 
     final float halfHeight = subjectHalfHeight(actor);
     desiredRefpoint.set(actorPos).add(0.0f, -halfHeight * COMMAND_LOOK_HEIGHT_FACTOR, 0.0f);
@@ -551,10 +648,45 @@ public final class BattleCameraDirector {
     );
     desiredViewpoint.set(desiredRefpoint).add(portraitRay(portraitDirection, COMMAND_CAMERA_HEIGHT).mul(distance));
 
-    final float drift = (float)java.lang.Math.sin(modeTicks * IDLE_DRIFT_SPEED) * IDLE_CAMERA_DRIFT;
-    final float lookDrift = (float)java.lang.Math.sin(modeTicks * IDLE_DRIFT_SPEED * 0.71f + 0.8f) * IDLE_LOOK_DRIFT;
-    desiredViewpoint.add(new Vector3f(forward).mul(drift));
-    desiredRefpoint.add(new Vector3f(forward).mul(lookDrift));
+    if(idleDrift) {
+      final float drift = (float)java.lang.Math.sin(modeTicks * IDLE_DRIFT_SPEED) * IDLE_CAMERA_DRIFT;
+      final float lookDrift = (float)java.lang.Math.sin(modeTicks * IDLE_DRIFT_SPEED * 0.71f + 0.8f) * IDLE_LOOK_DRIFT;
+      desiredViewpoint.add(new Vector3f(forward).mul(drift));
+      desiredRefpoint.add(new Vector3f(forward).mul(lookDrift));
+    }
+
+    return true;
+  }
+
+  private static boolean buildTurnEntryStagingShot() {
+    final Vector3f actorPos = focusPosition(actor);
+    final GroupFrame enemies = frameTargets(1);
+    if(enemies == null) {
+      return false;
+    }
+
+    final Vector3f forward = horizontalDirection(actorPos, enemies.center);
+    if(forward == null) {
+      return false;
+    }
+
+    final Vector3f stagingDirection = portraitDirection(actor, forward, TURN_ENTRY_FRONT_BIAS);
+    final float halfHeight = subjectHalfHeight(actor);
+    desiredRefpoint.set(actorPos).add(0.0f, -halfHeight * COMMAND_LOOK_HEIGHT_FACTOR, 0.0f);
+
+    final float finalDistance = clamp(
+      halfHeight * COMMAND_PORTRAIT_DISTANCE_SCALE,
+      COMMAND_PORTRAIT_MIN_DISTANCE,
+      COMMAND_PORTRAIT_MAX_DISTANCE
+    );
+    final float stagingDistance = clamp(
+      finalDistance * TURN_ENTRY_DISTANCE_SCALE,
+      COMMAND_PORTRAIT_MIN_DISTANCE * TURN_ENTRY_DISTANCE_SCALE,
+      COMMAND_PORTRAIT_MAX_DISTANCE * TURN_ENTRY_DISTANCE_SCALE
+    );
+    desiredViewpoint.set(desiredRefpoint).add(
+      portraitRay(stagingDirection, COMMAND_CAMERA_HEIGHT * 0.85f).mul(stagingDistance)
+    );
     return true;
   }
 
@@ -599,7 +731,7 @@ public final class BattleCameraDirector {
       return false;
     }
 
-    final Vector3f portraitDirection = portraitDirection(player, forward);
+    final Vector3f portraitDirection = portraitDirection(player, forward, PORTRAIT_FRONT_BIAS);
 
     final float halfHeight = subjectHalfHeight(player);
     desiredRefpoint.set(playerPos).add(0.0f, -halfHeight * lookHeightFactor, 0.0f);
@@ -934,7 +1066,8 @@ public final class BattleCameraDirector {
 
   private static Vector3f portraitDirection(
     final PlayerBattleEntity player,
-    final Vector3f fallbackForward
+    final Vector3f fallbackForward,
+    final float frontBias
   ) {
     final float yaw = player.model_148.coord2_14.transforms.rotate.y;
     final Vector3f facing = new Vector3f(
@@ -953,7 +1086,7 @@ public final class BattleCameraDirector {
     // character so idle-pose torso twists cannot turn the portrait into a
     // back shot.
     return rightOf(facing).mul(shotSide)
-      .add(new Vector3f(facing).mul(PORTRAIT_FRONT_BIAS))
+      .add(new Vector3f(facing).mul(frontBias))
       .normalize();
   }
 
@@ -1005,13 +1138,20 @@ public final class BattleCameraDirector {
   private static void applyCamera(final Battle battle, final float blend) {
     currentViewpoint.lerp(desiredViewpoint, blend);
     currentRefpoint.lerp(desiredRefpoint, blend);
+    setCameraDirect(battle, currentViewpoint, currentRefpoint);
+  }
 
+  private static void setCameraDirect(
+    final Battle battle,
+    final Vector3f viewpoint,
+    final Vector3f refpoint
+  ) {
     final var camera = battle.camera_800c67f0;
     camera.flags_11c &= ~(UPDATE_VIEWPOINT | UPDATE_REFPOINT);
     camera.viewpointMoving_122 = false;
     camera.refpointMoving_123 = false;
-    camera.setRefpoint(currentRefpoint.x, currentRefpoint.y, currentRefpoint.z);
-    camera.setViewpoint(currentViewpoint.x, currentViewpoint.y, currentViewpoint.z);
+    camera.setRefpoint(refpoint.x, refpoint.y, refpoint.z);
+    camera.setViewpoint(viewpoint.x, viewpoint.y, viewpoint.z);
   }
 
   private static void suspend() {
@@ -1038,6 +1178,8 @@ public final class BattleCameraDirector {
     ownsCamera = false;
     modeTicks = 0;
     actionWideCaptured = false;
+    turnEntrySnapped = false;
+    turnEntryTicks = 0;
     targetFramingDistance = 0.0f;
   }
 
