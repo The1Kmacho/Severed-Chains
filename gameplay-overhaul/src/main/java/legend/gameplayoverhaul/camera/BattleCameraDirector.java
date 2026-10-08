@@ -50,14 +50,11 @@ public final class BattleCameraDirector {
   private static final float COMMAND_LOOK_HEIGHT_FACTOR = 1.18f;
   private static final float COMMAND_CAMERA_HEIGHT = -0.10f;
   private static final float PORTRAIT_FRONT_BIAS = 0.48f;
-  private static final float TURN_ENTRY_DISTANCE_SCALE = 1.22f;
-  private static final float TURN_ENTRY_FRONT_BIAS = 0.24f;
+  private static final float TURN_ENTRY_LEAD_MIN = 320.0f;
+  private static final float TURN_ENTRY_LEAD_MAX = 560.0f;
   private static final int TURN_ENTRY_SETTLE_TICKS = 8;
-  private static final float ITEM_PORTRAIT_DISTANCE_SCALE = 1.95f;
-  private static final float ITEM_PORTRAIT_MIN_DISTANCE = 2050.0f;
-  private static final float ITEM_PORTRAIT_MAX_DISTANCE = 3600.0f;
-  private static final float ITEM_LOOK_HEIGHT_FACTOR = 1.32f;
-  private static final float ITEM_CAMERA_HEIGHT = -0.20f;
+  private static final float ITEM_SETUP_CAMERA_HEIGHT = -0.18f;
+  private static final float ITEM_PROJECTILE_CAMERA_HEIGHT = -0.20f;
   private static final float GUARD_LOOK_HEIGHT_FACTOR = 1.08f;
   private static final float GUARD_CAMERA_HEIGHT = -0.10f;
 
@@ -533,7 +530,7 @@ public final class BattleCameraDirector {
 
   private static void tickAttackItem(final ScriptState<BattleEntity27c> state, final Battle battle) {
     if(itemPhase == 0) {
-      if(!buildItemThrowShot()) {
+      if(!buildItemThrowSetupShot()) {
         stopTracker(state);
         return;
       }
@@ -550,7 +547,7 @@ public final class BattleCameraDirector {
     }
 
     if(itemPhase == 1) {
-      if(!buildItemThrowShot()) {
+      if(!buildItemThrowSetupShot()) {
         stopTracker(state);
         return;
       }
@@ -670,23 +667,17 @@ public final class BattleCameraDirector {
       return false;
     }
 
-    final Vector3f stagingDirection = portraitDirection(actor, forward, TURN_ENTRY_FRONT_BIAS);
-    final float halfHeight = subjectHalfHeight(actor);
-    desiredRefpoint.set(actorPos).add(0.0f, -halfHeight * COMMAND_LOOK_HEIGHT_FACTOR, 0.0f);
-
-    final float finalDistance = clamp(
-      halfHeight * COMMAND_PORTRAIT_DISTANCE_SCALE,
-      COMMAND_PORTRAIT_MIN_DISTANCE,
-      COMMAND_PORTRAIT_MAX_DISTANCE
+    // Keep the exact final portrait orientation and distance. The entry shot
+    // is only translated slightly ahead of the character, so the settle reads
+    // as a lateral/forward pan rather than a camera rotation.
+    final float lead = clamp(
+      subjectHalfHeight(actor) * 0.55f,
+      TURN_ENTRY_LEAD_MIN,
+      TURN_ENTRY_LEAD_MAX
     );
-    final float stagingDistance = clamp(
-      finalDistance * TURN_ENTRY_DISTANCE_SCALE,
-      COMMAND_PORTRAIT_MIN_DISTANCE * TURN_ENTRY_DISTANCE_SCALE,
-      COMMAND_PORTRAIT_MAX_DISTANCE * TURN_ENTRY_DISTANCE_SCALE
-    );
-    desiredViewpoint.set(desiredRefpoint).add(
-      portraitRay(stagingDirection, COMMAND_CAMERA_HEIGHT * 0.85f).mul(stagingDistance)
-    );
+    final Vector3f translation = new Vector3f(forward).mul(lead);
+    desiredViewpoint.set(turnEntryEndViewpoint).add(translation);
+    desiredRefpoint.set(turnEntryEndRefpoint).add(translation);
     return true;
   }
 
@@ -701,15 +692,45 @@ public final class BattleCameraDirector {
     );
   }
 
-  private static boolean buildItemThrowShot() {
-    return buildPlayerSidePortrait(
-      actor,
-      ITEM_LOOK_HEIGHT_FACTOR,
-      ITEM_CAMERA_HEIGHT,
-      ITEM_PORTRAIT_DISTANCE_SCALE,
-      ITEM_PORTRAIT_MIN_DISTANCE,
-      ITEM_PORTRAIT_MAX_DISTANCE
+  private static boolean buildItemThrowSetupShot() {
+    final Vector3f actorPos = focusPosition(actor);
+    final Vector3f impact = itemImpactPosition();
+    if(impact == null) {
+      return false;
+    }
+
+    final Vector3f travel = horizontalDirection(actorPos, impact);
+    if(travel == null) {
+      return false;
+    }
+
+    final GroupFrame targetFrame = itemTargetFrame();
+    final float targetRadius = targetFrame != null ? targetFrame.radius : 0.0f;
+    final float targetHalfHeight = targetFrame != null
+      ? targetFrame.maxHalfHeight
+      : itemTarget != null ? subjectHalfHeight(itemTarget) : 700.0f;
+    final float maxHalfHeight = java.lang.Math.max(subjectHalfHeight(actor), targetHalfHeight);
+    final float separation = horizontalDistance(actorPos, impact);
+
+    desiredRefpoint.set(actorPos).lerp(impact, 0.5f);
+
+    final Vector3f cameraDirection = rightOf(travel).mul(shotSide)
+      .add(new Vector3f(travel).mul(-0.12f))
+      .normalize();
+
+    final float distance = clamp(
+      separation * 0.92f + targetRadius * 1.15f + maxHalfHeight * 2.10f,
+      3400.0f,
+      7200.0f
     );
+    desiredViewpoint.set(desiredRefpoint).add(
+      new Vector3f(
+        cameraDirection.x,
+        ITEM_SETUP_CAMERA_HEIGHT,
+        cameraDirection.z
+      ).normalize().mul(distance)
+    );
+    return true;
   }
 
   private static boolean buildPlayerSidePortrait(
@@ -978,15 +999,49 @@ public final class BattleCameraDirector {
     }
 
     final Vector3f projectile = new Vector3f(itemStart).lerp(impact, progress);
-    desiredRefpoint.set(projectile);
+    final float remaining = horizontalDistance(projectile, impact);
 
-    final Vector3f side = rightOf(travel).mul(shotSide);
-    final Vector3f trailing = new Vector3f(travel).mul(-0.22f);
-    side.add(trailing).normalize();
+    final GroupFrame targetFrame = itemTargetFrame();
+    final float targetRadius = targetFrame != null ? targetFrame.radius : 0.0f;
+    final float targetHalfHeight = targetFrame != null
+      ? targetFrame.maxHalfHeight
+      : itemTarget != null ? subjectHalfHeight(itemTarget) : 700.0f;
 
-    final float distance = clamp(baseDistance * 0.46f, 1200.0f, 2100.0f);
-    desiredViewpoint.set(desiredRefpoint).add(cameraRay(side).mul(distance));
+    // Keep both the flying item and its destination visible. Bias the look
+    // point slightly toward the target so the enemy remains the visual anchor
+    // while the projectile crosses the frame.
+    desiredRefpoint.set(projectile).lerp(impact, 0.58f);
+
+    final Vector3f cameraDirection = rightOf(travel).mul(shotSide)
+      .add(new Vector3f(travel).mul(-0.10f))
+      .normalize();
+
+    final float distance = clamp(
+      remaining * 0.95f + targetRadius * 1.20f + targetHalfHeight * 2.15f,
+      3000.0f,
+      7000.0f
+    );
+    desiredViewpoint.set(desiredRefpoint).add(
+      new Vector3f(
+        cameraDirection.x,
+        ITEM_PROJECTILE_CAMERA_HEIGHT,
+        cameraDirection.z
+      ).normalize().mul(distance)
+    );
     return true;
+  }
+
+  private static GroupFrame itemTargetFrame() {
+    if(itemTargetsAll) {
+      return frameTargets(itemTargetType);
+    }
+
+    if(itemTarget == null) {
+      return null;
+    }
+
+    final Vector3f center = focusPosition(itemTarget);
+    return new GroupFrame(center, 0.0f, subjectHalfHeight(itemTarget));
   }
 
   private static boolean buildStoredItemTargetShot() {
