@@ -434,8 +434,16 @@ public class Battle extends EngineState<Battle> {
   private final Object usedMonsterTextureSlotsLock = new Object();
   private int usedMonsterTextureSlots_800c66c4;
   public ScriptState<? extends BattleEntity27c> currentTurnBent_800c66c8;
-  /** Player currently implied by the active monster's physical-action script. */
+  private enum EnemyActionKind {
+    UNKNOWN,
+    PHYSICAL,
+    NON_PHYSICAL
+  }
+
+  /** Player currently implied by the active monster's action script. */
   private PlayerBattleEntity enemyPhysicalIntentTarget;
+  /** Best current classification of the active monster action. */
+  private EnemyActionKind enemyActionKind = EnemyActionKind.UNKNOWN;
   /** Once the first physical hit check begins, later return/recovery animation must not create new cues. */
   private boolean enemyPhysicalImpactStarted;
   private int mcqBaseOffsetX_800c66cc;
@@ -2427,6 +2435,7 @@ public class Battle extends EngineState<Battle> {
           this.forcedTurnBent_800c66bc.clearFlag(FLAG_TAKE_FORCED_TURN).setFlag(FLAG_RELOAD_BATTLE_ACTIONS).setFlag(FLAG_CURRENT_TURN);
           this.currentTurnBent_800c66c8 = this.forcedTurnBent_800c66bc;
           this.enemyPhysicalIntentTarget = null;
+          this.enemyActionKind = EnemyActionKind.UNKNOWN;
           this.enemyPhysicalImpactStarted = false;
 
           LOGGER.info(BATTLE, "Bent %s (%s) forced turn start", this.currentTurnBent_800c66c8.innerStruct_00.getName(), this.currentTurnBent_800c66c8.name);
@@ -2438,6 +2447,7 @@ public class Battle extends EngineState<Battle> {
             //LAB_800c7d3c
             this.currentTurnBent_800c66c8 = battleState_8006e398.getCurrentTurnBent();
             this.enemyPhysicalIntentTarget = null;
+            this.enemyActionKind = EnemyActionKind.UNKNOWN;
             this.enemyPhysicalImpactStarted = false;
             this.currentTurnBent_800c66c8.setFlag(FLAG_RELOAD_BATTLE_ACTIONS).setFlag(FLAG_CURRENT_TURN);
 
@@ -3664,7 +3674,7 @@ public class Battle extends EngineState<Battle> {
       bent.model_148.animationState_9c = 1;
       bent.loadingAnimIndex_26e = animIndex;
       bent.currentAnimIndex_270 = -1;
-      this.postIncomingPhysicalCueFromAnimation(state);
+      this.postIncomingPhysicalCueFromAnimation(state, a0);
       return FlowControl.CONTINUE;
     }
 
@@ -3707,7 +3717,7 @@ public class Battle extends EngineState<Battle> {
         bent.model_148.animationState_9c = 1;
         bent.loadingAnimIndex_26e = newAnim;
         bent.currentAnimIndex_270 = -1;
-        this.postIncomingPhysicalCueFromAnimation(state);
+        this.postIncomingPhysicalCueFromAnimation(state, script);
         return FlowControl.CONTINUE;
       }
 
@@ -3813,7 +3823,7 @@ public class Battle extends EngineState<Battle> {
     //LAB_800cbb98
     this.FUN_800cdc1c(childState, x, y, z, script.params_20[3].get(), script.params_20[4].get(), script.params_20[5].get(), 0, script.params_20[2].get());
     childState.setTempTicker(this::FUN_800cb250);
-    this.postIncomingPhysicalCueFromMovement(childState, parentBentIndex, script.params_20[2].get());
+    this.postIncomingPhysicalCueFromMovement(script, childState, parentBentIndex, script.params_20[2].get());
     return FlowControl.CONTINUE;
   }
 
@@ -3847,7 +3857,7 @@ public class Battle extends EngineState<Battle> {
     final int movementTicks = Math.round(Math.sqrt(x * x + y * y + z * z) / script.params_20[2].get());
     this.FUN_800cdc1c(childState, vec.x, vec.y, vec.z, script.params_20[3].get(), script.params_20[4].get(), script.params_20[5].get(), 0, movementTicks);
     childState.setTempTicker(this::FUN_800cb250);
-    this.postIncomingPhysicalCueFromMovement(childState, parentBentIndex, movementTicks);
+    this.postIncomingPhysicalCueFromMovement(script, childState, parentBentIndex, movementTicks);
     return FlowControl.CONTINUE;
   }
 
@@ -3879,7 +3889,7 @@ public class Battle extends EngineState<Battle> {
     //LAB_800cbe78
     this.FUN_800cdc1c(childState, x, y, z, script.params_20[3].get(), script.params_20[4].get(), script.params_20[5].get(), 0x20, script.params_20[2].get());
     childState.setTempTicker(this::FUN_800cb250);
-    this.postIncomingPhysicalCueFromMovement(childState, script.params_20[1].get(), script.params_20[2].get());
+    this.postIncomingPhysicalCueFromMovement(script, childState, script.params_20[1].get(), script.params_20[2].get());
     return FlowControl.CONTINUE;
   }
 
@@ -3913,7 +3923,7 @@ public class Battle extends EngineState<Battle> {
     final int movementTicks = Math.round(Math.sqrt(x * x + y * y + z * z) / script.params_20[2].get());
     this.FUN_800cdc1c(childState, vec.x, vec.y, vec.z, script.params_20[3].get(), script.params_20[4].get(), script.params_20[5].get(), 0x20, movementTicks);
     childState.setTempTicker(this::FUN_800cb250);
-    this.postIncomingPhysicalCueFromMovement(childState, parentBentIndex, movementTicks);
+    this.postIncomingPhysicalCueFromMovement(script, childState, parentBentIndex, movementTicks);
     return FlowControl.CONTINUE;
   }
 
@@ -3941,7 +3951,7 @@ public class Battle extends EngineState<Battle> {
     //LAB_800cc160
     this.FUN_800cdc1c(childState, translation.x, translation.y, translation.z, script.params_20[3].get(), translation.y, script.params_20[4].get(), 0, script.params_20[2].get());
     childState.setTempTicker(this::FUN_800cb250);
-    this.postIncomingPhysicalCueFromMovement(childState, parentBentIndex, script.params_20[2].get());
+    this.postIncomingPhysicalCueFromMovement(script, childState, parentBentIndex, script.params_20[2].get());
     return FlowControl.CONTINUE;
   }
 
@@ -3973,7 +3983,7 @@ public class Battle extends EngineState<Battle> {
     final int movementTicks = Math.round(Math.sqrt(x * x + z * z) / script.params_20[2].get());
     this.FUN_800cdc1c(childState, vec.x, vec.y, vec.z, script.params_20[3].get(), vec.y, script.params_20[4].get(), 0, movementTicks);
     childState.setTempTicker(this::FUN_800cb250);
-    this.postIncomingPhysicalCueFromMovement(childState, parentBentIndex, movementTicks);
+    this.postIncomingPhysicalCueFromMovement(script, childState, parentBentIndex, movementTicks);
     return FlowControl.CONTINUE;
   }
 
@@ -4002,7 +4012,7 @@ public class Battle extends EngineState<Battle> {
     //LAB_800cc3fc
     this.FUN_800cdc1c(childState, vec.x, vec.y, vec.z, script.params_20[3].get(), vec.y, script.params_20[4].get(), 0x20, script.params_20[2].get());
     childState.setTempTicker(this::FUN_800cb250);
-    this.postIncomingPhysicalCueFromMovement(childState, parentBentIndex, script.params_20[2].get());
+    this.postIncomingPhysicalCueFromMovement(script, childState, parentBentIndex, script.params_20[2].get());
     return FlowControl.CONTINUE;
   }
 
@@ -4034,7 +4044,7 @@ public class Battle extends EngineState<Battle> {
     final int movementTicks = Math.round(Math.sqrt(x * x + z * z) / script.params_20[2].get());
     this.FUN_800cdc1c(childState, vec.x, vec.y, vec.z, script.params_20[3].get(), vec.y, script.params_20[4].get(), 0x20, movementTicks);
     childState.setTempTicker(this::FUN_800cb250);
-    this.postIncomingPhysicalCueFromMovement(childState, parentBentIndex, movementTicks);
+    this.postIncomingPhysicalCueFromMovement(script, childState, parentBentIndex, movementTicks);
     return FlowControl.CONTINUE;
   }
 
@@ -4047,7 +4057,7 @@ public class Battle extends EngineState<Battle> {
     final BattleEntity27c v0 = SCRIPTS.getObject(script.params_20[1].get(), BattleEntity27c.class);
 
     s0.model_148.coord2_14.transforms.rotate.y = MathHelper.atan2(v0.model_148.coord2_14.coord.transfer.x - s0.model_148.coord2_14.coord.transfer.x, v0.model_148.coord2_14.coord.transfer.z - s0.model_148.coord2_14.coord.transfer.z) + MathHelper.PI;
-    this.noteIncomingPhysicalTarget(s0, v0);
+    this.noteIncomingPhysicalTarget(script, s0, v0);
     return FlowControl.CONTINUE;
   }
 
@@ -4070,7 +4080,7 @@ public class Battle extends EngineState<Battle> {
     bent1.movementRemaining_d0.x = v0;
     bent1.movementRemaining_d0.y = v0 / ticks;
     state1.setTempTicker(this::FUN_800cb34c);
-    this.noteIncomingPhysicalTarget(bent1, bent2);
+    this.noteIncomingPhysicalTarget(script, bent1, bent2);
     return FlowControl.CONTINUE;
   }
 
@@ -9463,6 +9473,7 @@ public class Battle extends EngineState<Battle> {
   }
 
   private void noteIncomingPhysicalTarget(
+    final RunningScript<?> script,
     final BattleEntity27c attacker,
     final BattleEntity27c defender
   ) {
@@ -9470,24 +9481,47 @@ public class Battle extends EngineState<Battle> {
       || !(defender instanceof final PlayerBattleEntity player)
       || this.currentTurnBent_800c66c8 == null
       || this.currentTurnBent_800c66c8.innerStruct_00 != attacker
-      || this.enemyPhysicalImpactStarted
-      || attacker.item_d4 != null
-      || attacker.spell_94 != null) {
+      || this.enemyPhysicalImpactStarted) {
+      return;
+    }
+
+    final EnemyActionKind predicted = this.predictEnemyActionKind(script);
+    if(predicted == EnemyActionKind.NON_PHYSICAL) {
+      this.enemyActionKind = EnemyActionKind.NON_PHYSICAL;
+      return;
+    }
+    if(predicted == EnemyActionKind.PHYSICAL) {
+      this.enemyActionKind = EnemyActionKind.PHYSICAL;
+    }
+    if(this.enemyActionKind == EnemyActionKind.NON_PHYSICAL) {
       return;
     }
 
     this.enemyPhysicalIntentTarget = player;
-    this.postIncomingPhysicalCueFromAnimation(this.currentTurnBent_800c66c8);
+    this.postIncomingPhysicalCueFromAnimation(this.currentTurnBent_800c66c8, script);
   }
 
-  private void postIncomingPhysicalCueFromAnimation(final ScriptState<? extends BattleEntity27c> attackerState) {
+  private void postIncomingPhysicalCueFromAnimation(
+    final ScriptState<? extends BattleEntity27c> attackerState,
+    final RunningScript<?> script
+  ) {
     if(attackerState != this.currentTurnBent_800c66c8
       || this.enemyPhysicalImpactStarted
       || this.enemyPhysicalIntentTarget == null
       || !(attackerState.innerStruct_00 instanceof final MonsterBattleEntity attacker)
-      || attacker.item_d4 != null
-      || attacker.spell_94 != null
       || attacker.loadingAnimIndex_26e <= 0) {
+      return;
+    }
+
+    final EnemyActionKind predicted = this.predictEnemyActionKind(script);
+    if(predicted == EnemyActionKind.NON_PHYSICAL) {
+      this.enemyActionKind = EnemyActionKind.NON_PHYSICAL;
+      return;
+    }
+    if(predicted == EnemyActionKind.PHYSICAL) {
+      this.enemyActionKind = EnemyActionKind.PHYSICAL;
+    }
+    if(this.enemyActionKind == EnemyActionKind.NON_PHYSICAL) {
       return;
     }
 
@@ -9504,6 +9538,64 @@ public class Battle extends EngineState<Battle> {
       suggestedImpactTicks,
       IncomingAttackCueEvent.TimingSource.ANIMATION
     ));
+  }
+
+  /**
+   * Looks ahead from the current script command without mutating VM state.
+   * Persistent monster spell/item fields are action data and may survive turns,
+   * so they cannot safely identify whether the current action is physical.
+   */
+  private EnemyActionKind predictEnemyActionKind(final RunningScript<?> script) {
+    if(script == null || script.scriptState_04 == null || script.scriptState_04.frame() == null) {
+      return EnemyActionKind.UNKNOWN;
+    }
+
+    final ScriptFile file = script.scriptState_04.frame().file;
+    int offset = script.commandOffset_0c;
+    final int opCount = file.data.length / 4;
+
+    for(int instruction = 0; instruction < 96 && offset >= 0 && offset < opCount; instruction++) {
+      final int op = file.getOp(offset++);
+      final int opcode = op & 0xff;
+      final int paramCount = op >>> 8 & 0xff;
+      final int opParam = op >>> 16;
+
+      if(opcode == 56) { // CALL
+        if(opParam == 480 || opParam == 481 || opParam == 484 || opParam == 485 || opParam == 486) {
+          return EnemyActionKind.PHYSICAL;
+        }
+        if(opParam == 492 || opParam == 495 || opParam == 507 || opParam == 508) {
+          return EnemyActionKind.NON_PHYSICAL;
+        }
+      }
+
+      // Stop rather than guess across branches/gosubs. A later script hook can
+      // retry the prediction once execution has entered the chosen path.
+      if(opcode == 64 || opcode == 65 || opcode == 66 || opcode == 67
+        || opcode == 68 || opcode == 72 || opcode == 73 || opcode == 74
+        || opcode == 86 || opcode == 87 || opcode == 88) {
+        return EnemyActionKind.UNKNOWN;
+      }
+
+      for(int param = 0; param < paramCount && offset < opCount; param++) {
+        final int paramOp = file.getOp(offset++);
+        final int type = paramOp >>> 24;
+        final int cmd2 = paramOp >>> 16 & 0xff;
+
+        if(type == 0x1 || type == 0xc || type == 0x15 || type == 0x16 || type == 0x17
+          || type == 0x24 || type == 0x25 || type == 0x26 || type == 0x27) {
+          offset++;
+        } else if(type == 0x21) {
+          offset += (cmd2 + 3) / 4;
+        }
+
+        if(offset > opCount) {
+          return EnemyActionKind.UNKNOWN;
+        }
+      }
+    }
+
+    return EnemyActionKind.UNKNOWN;
   }
 
   private int estimateAnimationTicksToEnd(final BattleEntity27c attacker) {
@@ -9527,6 +9619,7 @@ public class Battle extends EngineState<Battle> {
   }
 
   private void postIncomingPhysicalCueFromMovement(
+    final RunningScript<?> script,
     final ScriptState<BattleEntity27c> attackerState,
     final int defenderIndex,
     final int movementTicks
@@ -9537,9 +9630,15 @@ public class Battle extends EngineState<Battle> {
       return;
     }
 
-    // Generic movement is also used by item/spell/status actions. Once the
-    // enemy has declared one of those, this movement is never a parry cue.
-    if(attacker.item_d4 != null || attacker.spell_94 != null) {
+    final EnemyActionKind predicted = this.predictEnemyActionKind(script);
+    if(predicted == EnemyActionKind.NON_PHYSICAL) {
+      this.enemyActionKind = EnemyActionKind.NON_PHYSICAL;
+      return;
+    }
+    if(predicted == EnemyActionKind.PHYSICAL) {
+      this.enemyActionKind = EnemyActionKind.PHYSICAL;
+    }
+    if(this.enemyActionKind == EnemyActionKind.NON_PHYSICAL) {
       return;
     }
 
@@ -9551,7 +9650,7 @@ public class Battle extends EngineState<Battle> {
     if(defenderIndex >= 0) {
       final BattleEntity27c defender = SCRIPTS.getObject(defenderIndex, BattleEntity27c.class);
       if(defender instanceof PlayerBattleEntity) {
-        this.noteIncomingPhysicalTarget(attacker, defender);
+        this.noteIncomingPhysicalTarget(script, attacker, defender);
         EVENTS.postEvent(new IncomingAttackCueEvent(
           this,
           attacker,
@@ -9594,6 +9693,7 @@ public class Battle extends EngineState<Battle> {
     final ScriptState<BattleEntity27c> attackerState = SCRIPTS.getState(attackerIndex, BattleEntity27c.class);
     if(attackerState == this.currentTurnBent_800c66c8
       && attackerState.innerStruct_00 instanceof MonsterBattleEntity) {
+      this.enemyActionKind = EnemyActionKind.PHYSICAL;
       this.enemyPhysicalImpactStarted = true;
     }
     if(hit
@@ -9622,6 +9722,10 @@ public class Battle extends EngineState<Battle> {
     script.params_20[2].set(hit ? 1 : 0);
 
     final ScriptState<BattleEntity27c> attackerState = SCRIPTS.getState(attackerIndex, BattleEntity27c.class);
+    if(attackerState == this.currentTurnBent_800c66c8
+      && attackerState.innerStruct_00 instanceof MonsterBattleEntity) {
+      this.enemyActionKind = EnemyActionKind.NON_PHYSICAL;
+    }
     if(hit
       && attackerState == this.currentTurnBent_800c66c8
       && attackerState.innerStruct_00 instanceof MonsterBattleEntity) {
@@ -9648,6 +9752,10 @@ public class Battle extends EngineState<Battle> {
     script.params_20[2].set(hit ? 1 : 0);
 
     final ScriptState<BattleEntity27c> attackerState = SCRIPTS.getState(attackerIndex, BattleEntity27c.class);
+    if(attackerState == this.currentTurnBent_800c66c8
+      && attackerState.innerStruct_00 instanceof MonsterBattleEntity) {
+      this.enemyActionKind = EnemyActionKind.NON_PHYSICAL;
+    }
     if(hit
       && attackerState == this.currentTurnBent_800c66c8
       && attackerState.innerStruct_00 instanceof MonsterBattleEntity) {
