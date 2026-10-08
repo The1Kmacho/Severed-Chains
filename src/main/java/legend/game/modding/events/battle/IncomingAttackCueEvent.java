@@ -11,6 +11,12 @@ import legend.game.combat.types.AttackType;
  * advances the attack.
  */
 public class IncomingAttackCueEvent extends BattleEvent {
+  public enum TimingSource {
+    HIT_CHECK,
+    ANIMATION,
+    MOVEMENT
+  }
+
   public final BattleEntity27c attacker;
   public final BattleEntity27c defender;
   public final AttackType attackType;
@@ -20,6 +26,7 @@ public class IncomingAttackCueEvent extends BattleEvent {
    * Zero means the source has no useful estimate.
    */
   public final int suggestedImpactTicks;
+  public final TimingSource timingSource;
 
   public IncomingAttackCueEvent(
     final Battle battle,
@@ -27,7 +34,7 @@ public class IncomingAttackCueEvent extends BattleEvent {
     final BattleEntity27c defender,
     final AttackType attackType
   ) {
-    this(battle, attacker, defender, attackType, 0);
+    this(battle, attacker, defender, attackType, 0, TimingSource.HIT_CHECK);
   }
 
   public IncomingAttackCueEvent(
@@ -37,10 +44,22 @@ public class IncomingAttackCueEvent extends BattleEvent {
     final AttackType attackType,
     final int suggestedImpactTicks
   ) {
+    this(battle, attacker, defender, attackType, suggestedImpactTicks, TimingSource.MOVEMENT);
+  }
+
+  public IncomingAttackCueEvent(
+    final Battle battle,
+    final BattleEntity27c attacker,
+    final BattleEntity27c defender,
+    final AttackType attackType,
+    final int suggestedImpactTicks,
+    final TimingSource timingSource
+  ) {
     super(battle);
     this.attacker = attacker;
     this.defender = defender;
     this.attackType = attackType;
     this.suggestedImpactTicks = java.lang.Math.max(0, suggestedImpactTicks);
+    this.timingSource = timingSource;
   }
 }

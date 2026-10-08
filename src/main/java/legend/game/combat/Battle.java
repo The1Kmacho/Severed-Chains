@@ -434,8 +434,10 @@ public class Battle extends EngineState<Battle> {
   private final Object usedMonsterTextureSlotsLock = new Object();
   private int usedMonsterTextureSlots_800c66c4;
   public ScriptState<? extends BattleEntity27c> currentTurnBent_800c66c8;
-  /** Current monster turn that has already emitted its early physical parry cue. */
-  private ScriptState<? extends BattleEntity27c> earlyPhysicalCueTurn;
+  /** Player currently implied by the active monster's physical-action script. */
+  private PlayerBattleEntity enemyPhysicalIntentTarget;
+  /** Once the first physical hit check begins, later return/recovery animation must not create new cues. */
+  private boolean enemyPhysicalImpactStarted;
   private int mcqBaseOffsetX_800c66cc;
 
   private boolean shouldRenderMcq_800c66d4;
@@ -2424,7 +2426,8 @@ public class Battle extends EngineState<Battle> {
         if(this.forcedTurnBent_800c66bc != null) { // A bent has a forced turn
           this.forcedTurnBent_800c66bc.clearFlag(FLAG_TAKE_FORCED_TURN).setFlag(FLAG_RELOAD_BATTLE_ACTIONS).setFlag(FLAG_CURRENT_TURN);
           this.currentTurnBent_800c66c8 = this.forcedTurnBent_800c66bc;
-          this.earlyPhysicalCueTurn = null;
+          this.enemyPhysicalIntentTarget = null;
+          this.enemyPhysicalImpactStarted = false;
 
           LOGGER.info(BATTLE, "Bent %s (%s) forced turn start", this.currentTurnBent_800c66c8.innerStruct_00.getName(), this.currentTurnBent_800c66c8.name);
           EVENTS.postEvent(new BattleEntityTurnEvent<>(this, encounter, this.forcedTurnBent_800c66bc));
@@ -2434,7 +2437,8 @@ public class Battle extends EngineState<Battle> {
           if(battleState_8006e398.hasAliveMonsters()) { // Monsters alive, calculate next bent turn
             //LAB_800c7d3c
             this.currentTurnBent_800c66c8 = battleState_8006e398.getCurrentTurnBent();
-            this.earlyPhysicalCueTurn = null;
+            this.enemyPhysicalIntentTarget = null;
+          this.enemyPhysicalImpactStarted = false;
             this.currentTurnBent_800c66c8.setFlag(FLAG_RELOAD_BATTLE_ACTIONS).setFlag(FLAG_CURRENT_TURN);
 
             LOGGER.info(BATTLE, "Bent %s (%s) turn start", this.currentTurnBent_800c66c8.innerStruct_00.getName(), this.currentTurnBent_800c66c8.name);
@@ -3660,6 +3664,7 @@ public class Battle extends EngineState<Battle> {
       bent.model_148.animationState_9c = 1;
       bent.loadingAnimIndex_26e = animIndex;
       bent.currentAnimIndex_270 = -1;
+      this.postIncomingPhysicalCueFromAnimation(state);
       return FlowControl.CONTINUE;
     }
 
@@ -3702,6 +3707,7 @@ public class Battle extends EngineState<Battle> {
         bent.model_148.animationState_9c = 1;
         bent.loadingAnimIndex_26e = newAnim;
         bent.currentAnimIndex_270 = -1;
+        this.postIncomingPhysicalCueFromAnimation(state);
         return FlowControl.CONTINUE;
       }
 
@@ -4041,6 +4047,7 @@ public class Battle extends EngineState<Battle> {
     final BattleEntity27c v0 = SCRIPTS.getObject(script.params_20[1].get(), BattleEntity27c.class);
 
     s0.model_148.coord2_14.transforms.rotate.y = MathHelper.atan2(v0.model_148.coord2_14.coord.transfer.x - s0.model_148.coord2_14.coord.transfer.x, v0.model_148.coord2_14.coord.transfer.z - s0.model_148.coord2_14.coord.transfer.z) + MathHelper.PI;
+    this.noteIncomingPhysicalTarget(s0, v0);
     return FlowControl.CONTINUE;
   }
 
@@ -4063,6 +4070,7 @@ public class Battle extends EngineState<Battle> {
     bent1.movementRemaining_d0.x = v0;
     bent1.movementRemaining_d0.y = v0 / ticks;
     state1.setTempTicker(this::FUN_800cb34c);
+    this.noteIncomingPhysicalTarget(bent1, bent2);
     return FlowControl.CONTINUE;
   }
 
@@ -9454,13 +9462,76 @@ public class Battle extends EngineState<Battle> {
     return damage;
   }
 
+  private void noteIncomingPhysicalTarget(
+    final BattleEntity27c attacker,
+    final BattleEntity27c defender
+  ) {
+    if(!(attacker instanceof MonsterBattleEntity)
+      || !(defender instanceof final PlayerBattleEntity player)
+      || attacker.getState() != this.currentTurnBent_800c66c8
+      || this.enemyPhysicalImpactStarted
+      || attacker.item_d4 != null
+      || attacker.spell_94 != null) {
+      return;
+    }
+
+    this.enemyPhysicalIntentTarget = player;
+    this.postIncomingPhysicalCueFromAnimation(attacker.getState());
+  }
+
+  private void postIncomingPhysicalCueFromAnimation(final ScriptState<BattleEntity27c> attackerState) {
+    if(attackerState != this.currentTurnBent_800c66c8
+      || this.enemyPhysicalImpactStarted
+      || this.enemyPhysicalIntentTarget == null
+      || !(attackerState.innerStruct_00 instanceof final MonsterBattleEntity attacker)
+      || attacker.item_d4 != null
+      || attacker.spell_94 != null
+      || attacker.loadingAnimIndex_26e <= 0) {
+      return;
+    }
+
+    final int suggestedImpactTicks = this.estimateAnimationTicksToEnd(attacker);
+    if(suggestedImpactTicks <= 0) {
+      return;
+    }
+
+    EVENTS.postEvent(new IncomingAttackCueEvent(
+      this,
+      attacker,
+      this.enemyPhysicalIntentTarget,
+      AttackType.PHYSICAL,
+      suggestedImpactTicks,
+      IncomingAttackCueEvent.TimingSource.ANIMATION
+    ));
+  }
+
+  private int estimateAnimationTicksToEnd(final BattleEntity27c attacker) {
+    final Model124 model = attacker.model_148;
+    if(model.animationState_9c == 2 || model.remainingFrames_9e <= 0) {
+      return 0;
+    }
+
+    final int framesPerKeyframe = java.lang.Math.max(
+      1,
+      java.lang.Math.round(2.0f * model.interpolationScale)
+    );
+    final int currentFrameRemainder = java.lang.Math.max(
+      1,
+      framesPerKeyframe - model.subFrameIndex
+    );
+    return java.lang.Math.max(
+      1,
+      (model.remainingFrames_9e - 1) * framesPerKeyframe + currentFrameRemainder
+    );
+  }
+
   private void postIncomingPhysicalCueFromMovement(
     final ScriptState<BattleEntity27c> attackerState,
     final int defenderIndex,
     final int movementTicks
   ) {
     if(attackerState != this.currentTurnBent_800c66c8
-      || attackerState == this.earlyPhysicalCueTurn
+      || this.enemyPhysicalImpactStarted
       || !(attackerState.innerStruct_00 instanceof final MonsterBattleEntity attacker)) {
       return;
     }
@@ -9471,22 +9542,22 @@ public class Battle extends EngineState<Battle> {
       return;
     }
 
-    this.earlyPhysicalCueTurn = attackerState;
-
-    // Use the movement's real duration instead of manufacturing a minimum.
-    // The gameplay mod decides whether this lead time is actually fair enough
-    // to expose as a parry window.
+    // Movement duration is a direct first-use timing source. Keep the small
+    // attack-contact tail used by retail scripts, but do not manufacture a
+    // minimum reaction window.
     final int suggestedImpactTicks = java.lang.Math.max(1, movementTicks + 8);
 
     if(defenderIndex >= 0) {
       final BattleEntity27c defender = SCRIPTS.getObject(defenderIndex, BattleEntity27c.class);
       if(defender instanceof PlayerBattleEntity) {
+        this.noteIncomingPhysicalTarget(attacker, defender);
         EVENTS.postEvent(new IncomingAttackCueEvent(
           this,
           attacker,
           defender,
           AttackType.PHYSICAL,
-          suggestedImpactTicks
+          suggestedImpactTicks,
+          IncomingAttackCueEvent.TimingSource.MOVEMENT
         ));
       }
       return;
@@ -9502,7 +9573,8 @@ public class Battle extends EngineState<Battle> {
         attacker,
         playerState.innerStruct_00,
         AttackType.PHYSICAL,
-        suggestedImpactTicks
+        suggestedImpactTicks,
+        IncomingAttackCueEvent.TimingSource.MOVEMENT
       ));
     }
   }
@@ -9519,6 +9591,10 @@ public class Battle extends EngineState<Battle> {
     script.params_20[2].set(hit ? 1 : 0);
 
     final ScriptState<BattleEntity27c> attackerState = SCRIPTS.getState(attackerIndex, BattleEntity27c.class);
+    if(attackerState == this.currentTurnBent_800c66c8
+      && attackerState.innerStruct_00 instanceof MonsterBattleEntity) {
+      this.enemyPhysicalImpactStarted = true;
+    }
     if(hit
       && attackerState == this.currentTurnBent_800c66c8
       && attackerState.innerStruct_00 instanceof MonsterBattleEntity) {
