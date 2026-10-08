@@ -2438,7 +2438,7 @@ public class Battle extends EngineState<Battle> {
             //LAB_800c7d3c
             this.currentTurnBent_800c66c8 = battleState_8006e398.getCurrentTurnBent();
             this.enemyPhysicalIntentTarget = null;
-          this.enemyPhysicalImpactStarted = false;
+            this.enemyPhysicalImpactStarted = false;
             this.currentTurnBent_800c66c8.setFlag(FLAG_RELOAD_BATTLE_ACTIONS).setFlag(FLAG_CURRENT_TURN);
 
             LOGGER.info(BATTLE, "Bent %s (%s) turn start", this.currentTurnBent_800c66c8.innerStruct_00.getName(), this.currentTurnBent_800c66c8.name);
@@ -9468,7 +9468,8 @@ public class Battle extends EngineState<Battle> {
   ) {
     if(!(attacker instanceof MonsterBattleEntity)
       || !(defender instanceof final PlayerBattleEntity player)
-      || attacker.getState() != this.currentTurnBent_800c66c8
+      || this.currentTurnBent_800c66c8 == null
+      || this.currentTurnBent_800c66c8.innerStruct_00 != attacker
       || this.enemyPhysicalImpactStarted
       || attacker.item_d4 != null
       || attacker.spell_94 != null) {
@@ -9476,10 +9477,10 @@ public class Battle extends EngineState<Battle> {
     }
 
     this.enemyPhysicalIntentTarget = player;
-    this.postIncomingPhysicalCueFromAnimation(attacker.getState());
+    this.postIncomingPhysicalCueFromAnimation(this.currentTurnBent_800c66c8);
   }
 
-  private void postIncomingPhysicalCueFromAnimation(final ScriptState<BattleEntity27c> attackerState) {
+  private void postIncomingPhysicalCueFromAnimation(final ScriptState<? extends BattleEntity27c> attackerState) {
     if(attackerState != this.currentTurnBent_800c66c8
       || this.enemyPhysicalImpactStarted
       || this.enemyPhysicalIntentTarget == null
