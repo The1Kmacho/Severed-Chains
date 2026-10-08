@@ -50,8 +50,11 @@ public final class BattleCameraDirector {
   private static final float COMMAND_LOOK_HEIGHT_FACTOR = 1.18f;
   private static final float COMMAND_CAMERA_HEIGHT = -0.10f;
   private static final float PORTRAIT_FRONT_BIAS = 0.48f;
-  private static final float ITEM_LOOK_HEIGHT_FACTOR = 1.18f;
-  private static final float ITEM_CAMERA_HEIGHT = -0.14f;
+  private static final float ITEM_PORTRAIT_DISTANCE_SCALE = 1.95f;
+  private static final float ITEM_PORTRAIT_MIN_DISTANCE = 2050.0f;
+  private static final float ITEM_PORTRAIT_MAX_DISTANCE = 3600.0f;
+  private static final float ITEM_LOOK_HEIGHT_FACTOR = 1.32f;
+  private static final float ITEM_CAMERA_HEIGHT = -0.20f;
   private static final float GUARD_LOOK_HEIGHT_FACTOR = 1.08f;
   private static final float GUARD_CAMERA_HEIGHT = -0.10f;
 
@@ -372,7 +375,7 @@ public final class BattleCameraDirector {
 
       case ROW, SWITCH_OUT, SWITCH_IN -> {
         if(!actionWideCaptured) {
-          if(!buildBattlefieldWideShot()) {
+          if(!buildBattlefieldWideShot(actionAnchor)) {
             stopTracker(state);
             return;
           }
@@ -560,7 +563,9 @@ public final class BattleCameraDirector {
       actor,
       COMMAND_LOOK_HEIGHT_FACTOR,
       COMMAND_CAMERA_HEIGHT,
-      COMMAND_PORTRAIT_DISTANCE_SCALE
+      COMMAND_PORTRAIT_DISTANCE_SCALE,
+      COMMAND_PORTRAIT_MIN_DISTANCE,
+      COMMAND_PORTRAIT_MAX_DISTANCE
     );
   }
 
@@ -569,7 +574,9 @@ public final class BattleCameraDirector {
       actor,
       ITEM_LOOK_HEIGHT_FACTOR,
       ITEM_CAMERA_HEIGHT,
-      COMMAND_PORTRAIT_DISTANCE_SCALE
+      ITEM_PORTRAIT_DISTANCE_SCALE,
+      ITEM_PORTRAIT_MIN_DISTANCE,
+      ITEM_PORTRAIT_MAX_DISTANCE
     );
   }
 
@@ -577,7 +584,9 @@ public final class BattleCameraDirector {
     final PlayerBattleEntity player,
     final float lookHeightFactor,
     final float cameraHeight,
-    final float distanceScale
+    final float distanceScale,
+    final float minDistance,
+    final float maxDistance
   ) {
     final Vector3f playerPos = focusPosition(player);
     final GroupFrame enemies = frameTargets(1);
@@ -596,8 +605,8 @@ public final class BattleCameraDirector {
     desiredRefpoint.set(playerPos).add(0.0f, -halfHeight * lookHeightFactor, 0.0f);
     final float distance = clamp(
       halfHeight * distanceScale,
-      COMMAND_PORTRAIT_MIN_DISTANCE,
-      COMMAND_PORTRAIT_MAX_DISTANCE
+      minDistance,
+      maxDistance
     );
     desiredViewpoint.set(desiredRefpoint).add(portraitRay(portraitDirection, cameraHeight).mul(distance));
     return true;
@@ -674,6 +683,10 @@ public final class BattleCameraDirector {
   }
 
   private static boolean buildBattlefieldWideShot() {
+    return buildBattlefieldWideShot(null);
+  }
+
+  private static boolean buildBattlefieldWideShot(final Vector3f extraPoint) {
     final GroupFrame party = frameTargets(0);
     final GroupFrame enemies = frameTargets(1);
     if(party == null || enemies == null) {
@@ -687,19 +700,45 @@ public final class BattleCameraDirector {
 
     desiredRefpoint.set(party.center).lerp(enemies.center, 0.5f);
 
-    final float halfFormationDistance = horizontalDistance(party.center, enemies.center) * 0.5f;
-    final float radius = java.lang.Math.max(
-      halfFormationDistance + party.radius,
-      halfFormationDistance + enemies.radius
-    );
-    final float maxHalfHeight = java.lang.Math.max(party.maxHalfHeight, enemies.maxHalfHeight);
+    // Bound the actual live combatant positions around the final wide-shot
+    // center rather than approximating from the two formation radii. This also
+    // handles Front/Back Row spreads and irregular encounter formations.
+    float radius = 0.0f;
+    float maxHalfHeight = 0.0f;
+    for(int targetType = 0; targetType <= 1; targetType++) {
+      final List<? extends ScriptState<? extends BattleEntity27c>> targets =
+        battleState_8006e398.getBentsForTargetType(targetType);
+
+      for(final ScriptState<? extends BattleEntity27c> targetState : targets) {
+        if(targetState == null || targetState.hasFlag(FLAG_CANT_TARGET)) {
+          continue;
+        }
+
+        final BattleEntity27c target = targetState.innerStruct_00;
+        radius = java.lang.Math.max(
+          radius,
+          horizontalDistance(desiredRefpoint, focusPosition(target))
+        );
+        maxHalfHeight = java.lang.Math.max(maxHalfHeight, subjectHalfHeight(target));
+      }
+    }
+
+    // Row/Switch shots are frozen before movement begins. Include the pending
+    // destination so a character moving into Back Row cannot leave the frame.
+    if(extraPoint != null) {
+      radius = java.lang.Math.max(radius, horizontalDistance(desiredRefpoint, extraPoint));
+      if(actor != null) {
+        maxHalfHeight = java.lang.Math.max(maxHalfHeight, subjectHalfHeight(actor));
+      }
+    }
+
     final float distance = clamp(
       java.lang.Math.max(
-        4800.0f,
-        radius * 1.55f + maxHalfHeight * 2.25f
+        5200.0f,
+        radius * 2.35f + maxHalfHeight * 2.60f
       ),
-      4800.0f,
-      8500.0f
+      5200.0f,
+      11000.0f
     );
 
     // Neutral battle overview from the party side, with just enough lateral
